@@ -43,8 +43,8 @@ export function BlueprintSchematic() {
         </marker>
       </defs>
 
-      {/* ── connectors (draw on) ── */}
-      {MODS.map((m, i) => {
+      {/* ── connectors (draw on) — radiate from the app/ hub ── */}
+      {MODS.filter((m) => m.id !== 'core').map((m, i) => {
         const a = anchor(m);
         const len = Math.hypot(a.x - CENTER.x, a.y - CENTER.y) + 4;
         return (
@@ -62,8 +62,8 @@ export function BlueprintSchematic() {
         );
       })}
 
-      {/* junction nodes */}
-      {MODS.map((m) => {
+      {/* junction nodes (skip the hub itself) */}
+      {MODS.filter((m) => m.id !== 'core').map((m) => {
         const a = anchor(m);
         return <circle key={`jn-${m.id}`} cx={a.x} cy={a.y} r="2.5" fill={m.alert ? 'var(--bp-alert)' : 'var(--bp-line)'} />;
       })}
@@ -102,11 +102,9 @@ export function BlueprintSchematic() {
         </g>
       ))}
 
-      {/* central junction reticle */}
-      <g stroke="var(--bp-line)" strokeWidth="1" fill="none">
-        <circle cx={CENTER.x} cy={CENTER.y} r="4" fill="var(--bp-ink)" stroke="none" />
-        <circle cx={CENTER.x} cy={CENTER.y} r="12" opacity="0.5" />
-      </g>
+      {/* hub marker — small node on the app/ box lower edge, clear of the label */}
+      <circle cx={CENTER.x} cy={264} r="3" fill="var(--bp-line)" />
+      <circle cx={CENTER.x} cy={264} r="7" fill="none" stroke="var(--bp-line)" strokeWidth="1" opacity="0.5" />
 
       {/* ── dimension line: overall width, top ── */}
       <g stroke="var(--bp-line-soft)" strokeWidth="1">

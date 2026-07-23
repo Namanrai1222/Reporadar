@@ -22,11 +22,15 @@ function ScanContent() {
   const [currentStage, setCurrentStage] = useState(0);
   const [discoveries, setDiscoveries] = useState<string[]>([]);
 
-  const repoUrl = searchParams.get('repo') || 'Analyzing repository...';
+  const repoUrl = searchParams.get('repo') || 'Analyzing repository…';
 
   useEffect(() => {
     let stage = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
     const advance = () => {
+      if (cancelled) return;
       if (stage < STAGES.length - 1) {
         setCompletedStages((prev) => [...prev, STAGES[stage].id]);
         stage++;
@@ -37,7 +41,7 @@ function ScanContent() {
         if (stage === 4) setDiscoveries((p) => [...p, 'Warning: Possible secret in src/config.ts']);
         if (stage === 5) setDiscoveries((p) => [...p, 'Found: 3 undocumented environment variables']);
 
-        setTimeout(advance, STAGES[stage].duration);
+        timer = setTimeout(advance, STAGES[stage].duration);
       } else {
         setCompletedStages((prev) => [...prev, STAGES[stage].id]);
         const reportData = sessionStorage.getItem('pending_report');
@@ -49,94 +53,132 @@ function ScanContent() {
       }
     };
 
-    setTimeout(advance, STAGES[0].duration);
+    timer = setTimeout(advance, STAGES[0].duration);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [router]);
 
-  return (
-    <div className="min-h-screen bg-[#111416] flex">
-      {/* Left: Stage timeline */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          <h1 className="text-[20px] font-semibold text-[#F2F4F0] mb-1">Analyzing Repository</h1>
-          <p className="text-[13px] text-[#A9B3B8] font-mono mb-8 truncate">{repoUrl}</p>
+  const pct = Math.round((completedStages.length / STAGES.length) * 100);
 
-          <div className="flex flex-col gap-0">
+  return (
+    <div className="flex min-h-screen flex-col bg-[var(--bp-ground)] lg:flex-row">
+      {/* Left: stage timeline */}
+      <div className="bp-paper flex flex-1 flex-col px-5 py-8 md:px-10 md:py-12">
+        <div className="mx-auto w-full max-w-lg">
+          <p className="bp-label mb-2">FIG.02 — SCAN IN PROGRESS</p>
+          <h1 className="text-[20px] font-semibold text-[var(--bp-ink)]">Analyzing repository</h1>
+          <p className="mt-1 truncate bp-mono text-[12.5px] text-[var(--bp-ink-dim)]">{repoUrl}</p>
+
+          {/* progress dimension bar */}
+          <div className="mt-6 mb-9">
+            <div className="mb-1.5 flex items-center justify-between bp-mono text-[10px] text-[var(--bp-line)]">
+              <span>PROGRESS</span>
+              <span>{pct}%</span>
+            </div>
+            <div className="relative h-[6px] border border-[var(--bp-line-faint)]">
+              <div
+                className="absolute inset-y-0 left-0 bg-[var(--bp-line)] transition-all duration-500 ease-out"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+
+          <ol className="flex flex-col">
             {STAGES.map((stage, index) => {
               const done = completedStages.includes(stage.id);
               const active = index === currentStage && !done;
 
               return (
-                <div key={stage.id} className="flex items-start gap-4">
+                <li key={stage.id} className="flex items-start gap-4">
                   <div className="flex flex-col items-center">
-                    <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
+                    <span
+                      className={`grid h-6 w-6 shrink-0 place-items-center border transition-colors duration-300 ${
                         done
-                          ? 'bg-[#63D7D1] border border-[#63D7D1]'
+                          ? 'border-[var(--bp-line)] bg-[var(--bp-line)]'
                           : active
-                          ? 'bg-transparent border-2 border-[#63D7D1]'
-                          : 'bg-transparent border border-[#364047]'
+                            ? 'border-[var(--bp-line)]'
+                            : 'border-[var(--bp-line-faint)]'
                       }`}
                     >
                       {done ? (
-                        <Check className="w-3 h-3 text-[#111416]" />
+                        <Check className="h-3 w-3 text-[var(--bp-ground)]" strokeWidth={2.5} />
                       ) : active ? (
-                        <Loader2 className="w-3 h-3 text-[#63D7D1] animate-spin" />
+                        <Loader2 className="h-3 w-3 animate-spin text-[var(--bp-line)]" />
                       ) : null}
-                    </div>
+                    </span>
                     {index < STAGES.length - 1 && (
-                      <div className={`w-px h-8 mt-1 ${done ? 'bg-[#63D7D1]/40' : 'bg-[#364047]'}`} />
+                      <span
+                        className={`mt-1 h-8 w-px transition-colors duration-300 ${
+                          done ? 'bg-[var(--bp-line-soft)]' : 'bg-[var(--bp-line-faint)]'
+                        }`}
+                      />
                     )}
                   </div>
 
                   <div className="pb-8">
                     <p
-                      className={`text-[13px] transition-all duration-300 ${
-                        done ? 'text-[#A9B3B8]' : active ? 'text-[#F2F4F0] font-medium' : 'text-[#364047]'
+                      className={`bp-mono text-[12.5px] transition-colors duration-300 ${
+                        done
+                          ? 'text-[var(--bp-ink-dim)]'
+                          : active
+                            ? 'text-[var(--bp-ink)]'
+                            : 'text-[color-mix(in_oklab,var(--bp-ink-dim)_50%,transparent)]'
                       }`}
                     >
+                      <span className="mr-2 text-[10px] text-[var(--bp-line)]">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
                       {stage.label}
                     </p>
-                    {done && <p className="text-[11px] text-[#63D7D1] mt-0.5">Done</p>}
+                    {done && <p className="mt-0.5 bp-mono text-[10px] text-[var(--bp-line)]">[OK]</p>}
                   </div>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ol>
         </div>
       </div>
 
-      {/* Right: Live discoveries */}
-      <div className="w-[360px] shrink-0 border-l border-[#364047] bg-[#181D20] p-6 flex flex-col">
-        <h2 className="text-[13px] font-semibold text-[#F2F4F0] mb-1">Live Discoveries</h2>
-        <p className="text-[11px] text-[#A9B3B8] mb-4">Findings are masked until analysis completes.</p>
+      {/* Right: live log */}
+      <aside className="flex w-full shrink-0 flex-col border-t border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] p-5 md:p-6 lg:w-[380px] lg:border-l lg:border-t-0">
+        <p className="bp-label mb-1">LIVE LOG</p>
+        <p className="mb-4 text-[11.5px] text-[var(--bp-ink-dim)]">
+          Findings are masked until analysis completes.
+        </p>
 
-        <div className="flex flex-col gap-2 flex-1">
-          {discoveries.map((d, i) => (
-            <div
-              key={i}
-              className="p-3 rounded-lg bg-[#22292D] border border-[#364047] text-[12px] text-[#A9B3B8] flex items-start gap-2"
-            >
-              {d.includes('Warning') ? (
-                <AlertTriangle className="w-3.5 h-3.5 text-[#F1BC62] shrink-0 mt-0.5" />
-              ) : (
-                <div className="w-3.5 h-3.5 rounded-full bg-[#63D7D1]/20 border border-[#63D7D1]/40 flex items-center justify-center shrink-0 mt-0.5">
-                  <div className="w-1 h-1 rounded-full bg-[#63D7D1]" />
-                </div>
-              )}
-              {d}
-            </div>
-          ))}
+        <div className="flex flex-1 flex-col gap-2">
+          {discoveries.map((d, i) => {
+            const warn = d.includes('Warning');
+            return (
+              <div
+                key={i}
+                className="flex items-start gap-2.5 border border-[var(--bp-line-faint)] p-3 bp-mono text-[11.5px] leading-relaxed text-[var(--bp-ink-dim)]"
+                style={warn ? { borderColor: 'color-mix(in oklab, var(--bp-alert) 45%, transparent)' } : undefined}
+              >
+                {warn ? (
+                  <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-[var(--bp-alert)]" strokeWidth={1.5} />
+                ) : (
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 bg-[var(--bp-line)]" />
+                )}
+                {d}
+              </div>
+            );
+          })}
           {discoveries.length === 0 && (
-            <div className="text-[12px] text-[#364047] font-mono">Waiting for discoveries...</div>
+            <div className="flex items-center gap-2 bp-mono text-[11.5px] text-[color-mix(in_oklab,var(--bp-ink-dim)_60%,transparent)]">
+              <span>&gt;</span>
+              <span className="inline-block h-[1.05em] w-[0.55ch] animate-pulse bg-[var(--bp-line)]" />
+              waiting for discoveries
+            </div>
           )}
         </div>
 
-        <div className="mt-4 pt-4 border-t border-[#364047]">
-          <p className="text-[10px] text-[#364047]">
-            Results are static analysis only. AI explanations are heuristic and may have false positives.
-          </p>
-        </div>
-      </div>
+        <p className="mt-4 border-t border-[var(--bp-line-faint)] pt-4 bp-mono text-[10px] leading-relaxed text-[color-mix(in_oklab,var(--bp-ink-dim)_70%,transparent)]">
+          Static analysis only. AI explanations are heuristic and may contain false positives.
+        </p>
+      </aside>
     </div>
   );
 }
@@ -145,8 +187,8 @@ export default function ScanPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#111416] flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-[#364047] border-t-[#63D7D1] rounded-full animate-spin" />
+        <div className="flex min-h-screen items-center justify-center bg-[var(--bp-ground)]">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--bp-line-faint)] border-t-[var(--bp-line)]" />
         </div>
       }
     >

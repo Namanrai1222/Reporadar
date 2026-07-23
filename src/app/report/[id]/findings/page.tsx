@@ -41,7 +41,7 @@ export default function FindingsPage() {
 
   if (!report) {
     return (
-      <div className="flex items-center justify-center py-24 text-[#A9B3B8] text-[13px]">
+      <div className="flex items-center justify-center py-24 bp-mono text-[13px] text-[var(--bp-ink-dim)]">
         No report data. Run a scan first.
       </div>
     );
@@ -50,18 +50,18 @@ export default function FindingsPage() {
   function toggleSeverity(s: Severity) {
     setSeverityFilter((prev) => {
       const next = new Set(prev);
-      if (next.has(s)) {
-        next.delete(s);
-      } else {
-        next.add(s);
-      }
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
       return next;
     });
   }
 
   function handleSort(field: typeof sortField) {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortField(field); setSortDir('desc'); }
+    else {
+      setSortField(field);
+      setSortDir('desc');
+    }
   }
 
   const severityWeight: Record<Severity, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
@@ -77,20 +77,24 @@ export default function FindingsPage() {
       return sortDir === 'desc' ? -diff : diff;
     });
 
+  const sortIcon = (field: typeof sortField) =>
+    sortField === field ? (
+      sortDir === 'desc' ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />
+    ) : null;
+
   return (
-    <div className="flex h-[calc(100vh-160px)] -mx-6 overflow-hidden">
+    <div className="-mx-5 flex h-[calc(100vh-190px)] overflow-hidden md:-mx-6">
       {/* Table */}
-      <div className={`flex flex-col flex-1 min-w-0 overflow-hidden transition-all ${selectedFinding ? 'w-[55%]' : 'w-full'}`}>
+      <div className={`flex min-w-0 flex-1 flex-col overflow-hidden ${selectedFinding ? 'hidden lg:flex' : 'flex'}`}>
         {/* Filters */}
-        <div className="px-6 py-3 border-b border-[#364047] flex items-center gap-2 bg-[#181D20]">
-          <span className="text-[11px] text-[#A9B3B8] mr-2">Filter:</span>
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] px-5 py-3 md:px-6">
+          <span className="bp-label mr-1">Filter</span>
           {SEVERITY_FILTERS.map((s) => (
             <button
               key={s}
               onClick={() => toggleSeverity(s)}
-              className={`px-2 py-1 rounded text-[11px] font-mono uppercase tracking-wide transition-all ${
-                severityFilter.has(s) ? 'opacity-100' : 'opacity-40 hover:opacity-70'
-              }`}
+              aria-pressed={severityFilter.has(s)}
+              className={`transition-opacity ${severityFilter.size === 0 || severityFilter.has(s) ? 'opacity-100' : 'opacity-35 hover:opacity-70'}`}
             >
               <SeverityBadge severity={s} showDot />
             </button>
@@ -98,130 +102,133 @@ export default function FindingsPage() {
           {severityFilter.size > 0 && (
             <button
               onClick={() => setSeverityFilter(new Set())}
-              className="ml-auto text-[11px] text-[#A9B3B8] hover:text-[#F07167] transition-colors"
+              className="ml-auto bp-mono text-[11px] text-[var(--bp-ink-dim)] transition-colors hover:text-[var(--bp-critical)]"
             >
-              Clear filters
+              Clear
             </button>
           )}
-          <span className="ml-auto text-[11px] text-[#A9B3B8]">{filtered.length} findings</span>
+          <span className={`bp-mono text-[11px] text-[var(--bp-ink-dim)] ${severityFilter.size > 0 ? '' : 'ml-auto'}`}>
+            {filtered.length} findings
+          </span>
         </div>
 
         {/* Table header */}
-        <div className="px-6 py-2 border-b border-[#364047] grid grid-cols-[80px_1fr_160px_80px] gap-4 bg-[#181D20]">
-          <button
-            onClick={() => handleSort('severity')}
-            className="text-[10px] font-medium text-[#A9B3B8] uppercase tracking-widest flex items-center gap-1 hover:text-[#F2F4F0]"
-          >
-            Severity
-            {sortField === 'severity' ? (sortDir === 'desc' ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />) : null}
+        <div className="grid grid-cols-[76px_1fr_140px] gap-4 border-b border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] px-5 py-2 md:grid-cols-[80px_1fr_160px_90px] md:px-6">
+          <button onClick={() => handleSort('severity')} className="flex items-center gap-1 bp-label hover:text-[var(--bp-ink)]">
+            Severity {sortIcon('severity')}
           </button>
-          <span className="text-[10px] font-medium text-[#A9B3B8] uppercase tracking-widest">Finding</span>
-          <button
-            onClick={() => handleSort('file')}
-            className="text-[10px] font-medium text-[#A9B3B8] uppercase tracking-widest flex items-center gap-1 hover:text-[#F2F4F0]"
-          >
-            File
-            {sortField === 'file' ? (sortDir === 'desc' ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />) : null}
+          <span className="bp-label">Finding</span>
+          <button onClick={() => handleSort('file')} className="flex items-center gap-1 bp-label hover:text-[var(--bp-ink)]">
+            File {sortIcon('file')}
           </button>
-          <span className="text-[10px] font-medium text-[#A9B3B8] uppercase tracking-widest">Category</span>
+          <span className="hidden bp-label md:block">Category</span>
         </div>
 
         {/* Rows */}
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-[#A9B3B8]">
-              <CheckCircle className="w-10 h-10 mb-3 text-[#63D7D1]" />
-              <p className="text-[15px] font-medium text-[#F2F4F0]">No findings match the current filters</p>
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <CheckCircle className="mb-3 h-9 w-9 text-[var(--bp-line)]" strokeWidth={1.5} />
+              <p className="text-[15px] font-medium text-[var(--bp-ink)]">No findings match the current filters</p>
             </div>
           ) : (
-            filtered.map((finding) => (
-              <button
-                key={finding.id}
-                onClick={() => setSelectedFinding(selectedFinding?.id === finding.id ? null : finding)}
-                className={`w-full px-6 py-3 border-b border-[#364047]/50 grid grid-cols-[80px_1fr_160px_80px] gap-4 items-center text-left hover:bg-[#22292D] transition-colors ${
-                  selectedFinding?.id === finding.id ? 'bg-[#22292D]' : ''
-                }`}
-              >
-                <SeverityBadge severity={finding.severity} showDot />
-                <div>
-                  <p className="text-[13px] text-[#F2F4F0] font-medium truncate">{finding.title}</p>
-                  <p className="text-[11px] text-[#A9B3B8] font-mono mt-0.5">Line {finding.lineNumber}</p>
-                </div>
-                <p className="text-[11px] font-mono text-[#A9B3B8] truncate">{finding.filePath.split('/').slice(-2).join('/')}</p>
-                <span className="text-[10px] font-mono text-[#A9B3B8] truncate">
-                  {CATEGORY_LABELS[finding.category] ?? finding.category}
-                </span>
-              </button>
-            ))
+            filtered.map((finding) => {
+              const on = selectedFinding?.id === finding.id;
+              return (
+                <button
+                  key={finding.id}
+                  onClick={() => setSelectedFinding(on ? null : finding)}
+                  className={`grid w-full grid-cols-[76px_1fr_140px] items-center gap-4 border-b border-[var(--bp-line-faint)] px-5 py-3 text-left transition-colors hover:bg-[color-mix(in_oklab,var(--bp-line)_6%,transparent)] md:grid-cols-[80px_1fr_160px_90px] md:px-6 ${
+                    on ? 'bg-[color-mix(in_oklab,var(--bp-line)_9%,transparent)]' : ''
+                  }`}
+                >
+                  <SeverityBadge severity={finding.severity} showDot />
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-medium text-[var(--bp-ink)]">{finding.title}</p>
+                    <p className="mt-0.5 bp-mono text-[11px] text-[var(--bp-ink-dim)]">Line {finding.lineNumber}</p>
+                  </div>
+                  <p className="truncate bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+                    {finding.filePath.split('/').slice(-2).join('/')}
+                  </p>
+                  <span className="hidden truncate bp-mono text-[10px] text-[var(--bp-ink-dim)] md:block">
+                    {CATEGORY_LABELS[finding.category] ?? finding.category}
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
       </div>
 
-      {/* Detail Drawer */}
+      {/* Detail drawer */}
       {selectedFinding && (
-        <div className="w-[420px] shrink-0 border-l border-[#364047] bg-[#181D20] flex flex-col overflow-y-auto">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#364047] sticky top-0 bg-[#181D20] z-10">
+        <div className="flex w-full shrink-0 flex-col overflow-y-auto border-l border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] lg:w-[430px]">
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] px-5 py-4">
             <div className="flex items-center gap-2">
-              <Eye className="w-4 h-4 text-[#A9B3B8]" />
-              <h3 className="text-[13px] font-semibold text-[#F2F4F0]">Finding Detail</h3>
+              <Eye className="h-4 w-4 text-[var(--bp-line)]" strokeWidth={1.5} />
+              <h3 className="bp-label">Finding detail</h3>
             </div>
-            <button onClick={() => setSelectedFinding(null)} className="text-[#A9B3B8] hover:text-[#F2F4F0]">
-              <X className="w-4 h-4" />
+            <button
+              onClick={() => setSelectedFinding(null)}
+              aria-label="Close detail"
+              className="text-[var(--bp-ink-dim)] transition-colors hover:text-[var(--bp-ink)]"
+            >
+              <X className="h-4 w-4" strokeWidth={1.5} />
             </button>
           </div>
 
-          <div className="p-5 space-y-5">
-            {/* Header */}
+          <div className="space-y-5 p-5">
             <div>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="mb-2 flex items-center gap-2">
                 <SeverityBadge severity={selectedFinding.severity} />
-                <span className="text-[11px] font-mono text-[#364047]">{selectedFinding.ruleId}</span>
+                <span className="bp-mono text-[11px] text-[var(--bp-ink-dim)]">{selectedFinding.ruleId}</span>
               </div>
-              <h2 className="text-[15px] font-semibold text-[#F2F4F0] leading-snug">{selectedFinding.title}</h2>
+              <h2 className="text-[15px] font-semibold leading-snug text-[var(--bp-ink)]">{selectedFinding.title}</h2>
             </div>
 
-            {/* Location */}
-            <div className="p-3 rounded-lg bg-[#22292D] border border-[#364047]">
-              <div className="flex items-center gap-2 mb-1">
-                <FileCode className="w-3.5 h-3.5 text-[#A9B3B8]" />
-                <span className="text-[11px] font-mono text-[#A9B3B8]">{selectedFinding.filePath}</span>
+            <div className="border border-[var(--bp-line-faint)] p-3">
+              <div className="mb-1 flex items-center gap-2">
+                <FileCode className="h-3.5 w-3.5 text-[var(--bp-line)]" strokeWidth={1.5} />
+                <span className="break-all bp-mono text-[11px] text-[var(--bp-ink-dim)]">{selectedFinding.filePath}</span>
               </div>
-              <p className="text-[11px] text-[#364047] font-mono">Line {selectedFinding.lineNumber}</p>
+              <p className="bp-mono text-[11px] text-[color-mix(in_oklab,var(--bp-ink-dim)_70%,transparent)]">
+                Line {selectedFinding.lineNumber}
+              </p>
             </div>
 
-            {/* Evidence */}
             <div>
-              <p className="text-[10px] font-medium text-[#A9B3B8] uppercase tracking-widest mb-2">Evidence (Masked)</p>
-              <pre className="p-3 rounded-lg bg-[#0d1014] border border-[#364047] text-[11px] font-mono text-[#F1BC62] overflow-x-auto whitespace-pre-wrap break-all">
+              <p className="bp-label mb-2">Evidence — masked</p>
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all border border-[var(--bp-line-faint)] bg-[var(--bp-ground)] p-3 bp-mono text-[11px]" style={{ color: 'var(--bp-alert)' }}>
                 {selectedFinding.evidence}
               </pre>
             </div>
 
-            {/* Explanation */}
             <div>
-              <p className="text-[10px] font-medium text-[#A9B3B8] uppercase tracking-widest mb-2">Explanation</p>
-              <p className="text-[13px] text-[#A9B3B8] leading-relaxed">{selectedFinding.explanation}</p>
+              <p className="bp-label mb-2">Explanation</p>
+              <p className="text-[13px] leading-relaxed text-[var(--bp-ink-dim)]">{selectedFinding.explanation}</p>
             </div>
 
-            {/* Fix */}
-            <div className="p-4 rounded-lg bg-[#63D7D1]/5 border border-[#63D7D1]/20">
-              <p className="text-[10px] font-medium text-[#63D7D1] uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <AlertTriangle className="w-3 h-3" />
-                Suggested Fix
+            <div
+              className="border p-4"
+              style={{ borderColor: 'color-mix(in oklab, var(--bp-line) 22%, transparent)', background: 'color-mix(in oklab, var(--bp-line) 6%, transparent)' }}
+            >
+              <p className="mb-2 flex items-center gap-1.5 bp-label" style={{ color: 'var(--bp-line)' }}>
+                <AlertTriangle className="h-3 w-3" strokeWidth={1.5} />
+                Suggested fix
               </p>
-              <p className="text-[13px] text-[#A9B3B8] leading-relaxed">{selectedFinding.suggestedFix}</p>
+              <p className="text-[13px] leading-relaxed text-[var(--bp-ink-dim)]">{selectedFinding.suggestedFix}</p>
             </div>
 
-            {/* Metadata */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-lg bg-[#22292D]">
-                <p className="text-[10px] text-[#A9B3B8] mb-1">Confidence</p>
-                <p className="text-[13px] font-mono text-[#F2F4F0] capitalize">{selectedFinding.confidence}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-[#22292D]">
-                <p className="text-[10px] text-[#A9B3B8] mb-1">Status</p>
-                <p className="text-[13px] font-mono text-[#F2F4F0] capitalize">{selectedFinding.status}</p>
-              </div>
+              {[
+                ['Confidence', selectedFinding.confidence],
+                ['Status', selectedFinding.status],
+              ].map(([label, value]) => (
+                <div key={label} className="border border-[var(--bp-line-faint)] p-3">
+                  <p className="bp-label mb-1">{label}</p>
+                  <p className="bp-mono text-[13px] capitalize text-[var(--bp-ink)]">{value}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Star, GitFork, Globe, FileCode, Map, Shield, GitMerge, Leaf, BookOpen, Download } from 'lucide-react';
+import { Star, GitFork, Globe, Map, Shield, GitMerge, Leaf, BookOpen, Download, ArrowLeft } from 'lucide-react';
 import type { Report } from '@/lib/types';
+import { RepoRadarLogo } from '@/components/brand/RepoRadarLogo';
 
 const NAV_ITEMS = [
   { href: '', label: 'Overview', icon: Globe },
@@ -44,97 +45,110 @@ export function ReportShell({
   };
 
   return (
-    <div className="min-h-screen bg-[#111416] flex flex-col">
-      {/* Repository Header */}
-      <header className="border-b border-[#364047] bg-[#181D20] px-6 py-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-5 h-5 rounded bg-[#63D7D1]/20 flex items-center justify-center">
-                  <FileCode className="w-3 h-3 text-[#63D7D1]" />
-                </div>
-                <a
-                  href={report?.repo.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[15px] font-semibold text-[#F2F4F0] hover:text-[#63D7D1] font-mono transition-colors"
-                >
-                  {report ? `${report.repo.owner}/${report.repo.name}` : reportId}
-                </a>
-                {report?.repo.branch && (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-[#22292D] text-[#A9B3B8] border border-[#364047]">
-                    {report.repo.branch}
-                  </span>
-                )}
-              </div>
-              {report?.repo.description && (
-                <p className="text-[13px] text-[#A9B3B8] ml-7">{report.repo.description}</p>
-              )}
-              <div className="flex items-center gap-4 ml-7 mt-2">
-                {report?.repo.primaryLanguage && (
-                  <span className="text-[11px] text-[#A9B3B8] font-mono">{report.repo.primaryLanguage}</span>
-                )}
-                {report?.repo.stars !== undefined && (
-                  <span className="text-[11px] text-[#A9B3B8] flex items-center gap-1">
-                    <Star className="w-3 h-3" />
-                    {report.repo.stars.toLocaleString()}
-                  </span>
-                )}
-                {report?.repo.forks !== undefined && (
-                  <span className="text-[11px] text-[#A9B3B8] flex items-center gap-1">
-                    <GitFork className="w-3 h-3" />
-                    {report.repo.forks.toLocaleString()}
-                  </span>
-                )}
-                {criticalCount > 0 && (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-[#F07167]/15 text-[#F07167] border border-[#F07167]/30">
-                    {criticalCount} critical
-                  </span>
-                )}
-                {highCount > 0 && (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-[#F1BC62]/15 text-[#F1BC62] border border-[#F1BC62]/30">
-                    {highCount} high
-                  </span>
-                )}
-              </div>
+    <div className="flex min-h-screen flex-col bg-[var(--bp-ground)]">
+      <header className="sticky top-0 z-30 border-b border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_92%,transparent)] backdrop-blur-md">
+        <div className="mx-auto max-w-7xl px-5 pt-3 md:px-6">
+          {/* top strip */}
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/" aria-label="RepoRadar home" className="hidden sm:block">
+                <RepoRadarLogo size={24} wordClassName="text-[13px]" />
+              </Link>
+              <Link
+                href="/history"
+                className="inline-flex items-center gap-1.5 bp-mono text-[11px] text-[var(--bp-ink-dim)] transition-colors hover:text-[var(--bp-ink)]"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
+                History
+              </Link>
             </div>
-
-            <div className="flex items-center gap-2">
-              <button className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[#A9B3B8] border border-[#364047] hover:border-[#63D7D1] hover:text-[#63D7D1] transition-all">
-                <Download className="w-3.5 h-3.5" />
-                Export
-              </button>
-            </div>
+            <button className="inline-flex items-center gap-2 border border-[var(--bp-line-faint)] px-3 py-1.5 bp-mono text-[11px] text-[var(--bp-ink-dim)] transition-colors hover:border-[var(--bp-line)] hover:text-[var(--bp-ink)]">
+              <Download className="h-3.5 w-3.5" strokeWidth={1.5} />
+              Export
+            </button>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="flex items-center gap-0 mt-5 -mb-4 overflow-x-auto">
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={href}
-                href={navHref(href)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-all whitespace-nowrap ${
-                  isActive(href)
-                    ? 'border-[#63D7D1] text-[#63D7D1]'
-                    : 'border-transparent text-[#A9B3B8] hover:text-[#F2F4F0] hover:border-[#364047]'
-                }`}
+          {/* repo identity */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <a
+              href={report?.repo.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bp-mono text-[15px] font-medium text-[var(--bp-ink)] transition-colors hover:text-[var(--bp-line)]"
+            >
+              {report ? `${report.repo.owner}/${report.repo.name}` : reportId}
+            </a>
+            {report?.repo.branch && (
+              <span className="border border-[var(--bp-line-faint)] px-1.5 py-0.5 bp-mono text-[10px] text-[var(--bp-ink-dim)]">
+                {report.repo.branch}
+              </span>
+            )}
+            {report?.repo.primaryLanguage && (
+              <span className="bp-mono text-[11px] text-[var(--bp-ink-dim)]">{report.repo.primaryLanguage}</span>
+            )}
+            {report?.repo.stars !== undefined && (
+              <span className="flex items-center gap-1 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+                <Star className="h-3 w-3" strokeWidth={1.5} />
+                {report.repo.stars.toLocaleString()}
+              </span>
+            )}
+            {report?.repo.forks !== undefined && (
+              <span className="flex items-center gap-1 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+                <GitFork className="h-3 w-3" strokeWidth={1.5} />
+                {report.repo.forks.toLocaleString()}
+              </span>
+            )}
+            {criticalCount > 0 && (
+              <span
+                className="border px-2 py-0.5 bp-mono text-[10px]"
+                style={{ color: 'var(--bp-critical)', borderColor: 'color-mix(in oklab, var(--bp-critical) 40%, transparent)' }}
               >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-                {href === '/findings' && report && report.findings.length > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#22292D] text-[#A9B3B8]">
-                    {report.findings.length}
-                  </span>
-                )}
-              </Link>
-            ))}
+                {criticalCount} CRITICAL
+              </span>
+            )}
+            {highCount > 0 && (
+              <span
+                className="border px-2 py-0.5 bp-mono text-[10px]"
+                style={{ color: 'var(--bp-alert)', borderColor: 'color-mix(in oklab, var(--bp-alert) 40%, transparent)' }}
+              >
+                {highCount} HIGH
+              </span>
+            )}
+          </div>
+          {report?.repo.description && (
+            <p className="mt-2 max-w-2xl text-[13px] text-[var(--bp-ink-dim)]">{report.repo.description}</p>
+          )}
+
+          {/* tabs */}
+          <nav className="-mb-px mt-4 flex items-center gap-0 overflow-x-auto">
+            {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+              const active = isActive(href);
+              return (
+                <Link
+                  key={href}
+                  href={navHref(href)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3.5 py-2.5 bp-mono text-[12px] transition-colors md:px-4 ${
+                    active
+                      ? 'border-[var(--bp-line)] text-[var(--bp-line)]'
+                      : 'border-transparent text-[var(--bp-ink-dim)] hover:text-[var(--bp-ink)]'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  {label}
+                  {href === '/findings' && report && report.findings.length > 0 && (
+                    <span className="ml-1 border border-[var(--bp-line-faint)] px-1.5 py-px text-[10px] text-[var(--bp-ink-dim)]">
+                      {report.findings.length}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
           </nav>
         </div>
       </header>
 
-      {/* Page content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-6 md:px-6">{children}</main>
     </div>
   );
 }

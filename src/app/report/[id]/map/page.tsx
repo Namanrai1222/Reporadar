@@ -3,7 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Report, CodeNode } from '@/lib/types';
-import { X, FileCode, Globe, Database, Link2, Server, Leaf } from 'lucide-react';
+import { X, FileCode, Globe, Database, Link2, Server, Leaf, Map as MapIcon } from 'lucide-react';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 
 function getReport(dataParam: string | null): Report | null {
@@ -16,14 +16,21 @@ function getReport(dataParam: string | null): Report | null {
 }
 
 const NODE_TYPE_CONFIG: Record<CodeNode['type'], { label: string; color: string; icon: typeof FileCode }> = {
-  client_page: { label: 'Client Page', color: '#B9A8FF', icon: Globe },
-  api_route: { label: 'API Route', color: '#63D7D1', icon: Server },
-  service: { label: 'Service', color: '#B7E36B', icon: Server },
-  database: { label: 'Database', color: '#F1BC62', icon: Database },
-  env_var: { label: 'Env Variable', color: '#A9B3B8', icon: Leaf },
-  external_api: { label: 'External API', color: '#F07167', icon: Link2 },
-  file: { label: 'File', color: '#364047', icon: FileCode },
+  client_page: { label: 'Client Page', color: '#b9a8ff', icon: Globe },
+  api_route: { label: 'API Route', color: '#7fb6c9', icon: Server },
+  service: { label: 'Service', color: '#9fdc7a', icon: Server },
+  database: { label: 'Database', color: '#f4b45a', icon: Database },
+  env_var: { label: 'Env Variable', color: '#9db9c4', icon: Leaf },
+  external_api: { label: 'External API', color: '#ff6b5e', icon: Link2 },
+  file: { label: 'File', color: '#6a828d', icon: FileCode },
 };
+
+const LAYER_LEGEND: [string, string][] = [
+  ['Client', '#b9a8ff'],
+  ['Application', '#7fb6c9'],
+  ['External', '#ff6b5e'],
+  ['Data', '#f4b45a'],
+];
 
 interface GraphNode {
   id: string;
@@ -77,21 +84,24 @@ export default function CodeMapPage() {
   const edges = useMemo(() => report?.edges ?? [], [report?.edges]);
 
   const graphNodes = useMemo(() => buildLayout(nodes), [nodes]);
-  const nodeMap = useMemo(
-    () => Object.fromEntries(graphNodes.map((n) => [n.id, n])),
-    [graphNodes]
+  const nodeMap = useMemo(() => Object.fromEntries(graphNodes.map((n) => [n.id, n])), [graphNodes]);
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if ((e.target as SVGElement).closest('[data-node]')) return;
+      setDragging(true);
+      setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
+    },
+    [transform],
   );
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if ((e.target as SVGElement).closest('[data-node]')) return;
-    setDragging(true);
-    setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
-  }, [transform]);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragging) return;
-    setTransform((t) => ({ ...t, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
-  }, [dragging, dragStart]);
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!dragging) return;
+      setTransform((t) => ({ ...t, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
+    },
+    [dragging, dragStart],
+  );
 
   const handleMouseUp = useCallback(() => setDragging(false), []);
 
@@ -108,59 +118,51 @@ export default function CodeMapPage() {
     return () => svg.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  const selectedNodeRelatedFindings = report?.findings.filter((f) =>
-    f.relatedNodeIds.includes(selectedNode?.id ?? '')
-  ) ?? [];
+  const selectedNodeRelatedFindings =
+    report?.findings.filter((f) => f.relatedNodeIds.includes(selectedNode?.id ?? '')) ?? [];
 
   if (!report) {
     return (
-      <div className="flex items-center justify-center h-[60vh] text-[#A9B3B8] text-[13px]">
+      <div className="flex h-[60vh] items-center justify-center bp-mono text-[13px] text-[var(--bp-ink-dim)]">
         No report data. Run a scan first.
       </div>
     );
   }
 
   return (
-    <div className="flex h-[calc(100vh-160px)] -mx-6 overflow-hidden">
-      {/* SVG Canvas */}
-      <div className="flex-1 relative overflow-hidden bg-[#0d1014]">
+    <div className="-mx-5 flex h-[calc(100vh-190px)] overflow-hidden md:-mx-6">
+      {/* Canvas */}
+      <div className="bp-paper relative flex-1 overflow-hidden">
         {/* Legend */}
-        <div className="absolute top-4 left-4 z-10 p-3 rounded-xl bg-[#181D20]/90 border border-[#364047] backdrop-blur-sm">
-          <p className="text-[10px] font-medium text-[#A9B3B8] uppercase tracking-widest mb-2">Layers</p>
-          {['Client', 'Application', 'External', 'Data'].map((label, i) => (
-            <div key={label} className="flex items-center gap-2 text-[11px] text-[#A9B3B8] mb-1">
-              <div className="w-2 h-2 rounded-full" style={{ background: ['#B9A8FF', '#63D7D1', '#F07167', '#F1BC62'][i] }} />
+        <div className="absolute left-4 top-4 z-10 border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_88%,transparent)] p-3 backdrop-blur-sm">
+          <p className="bp-label mb-2">Layers</p>
+          {LAYER_LEGEND.map(([label, color]) => (
+            <div key={label} className="mb-1 flex items-center gap-2 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+              <span className="h-2 w-2" style={{ background: color }} />
               {label}
             </div>
           ))}
         </div>
 
         {/* Controls */}
-        <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+        <div className="absolute right-4 top-4 z-10 flex flex-col gap-2">
           <button
             onClick={() => setTransform({ x: 0, y: 0, scale: 1 })}
-            className="px-3 py-1.5 rounded-lg text-[11px] text-[#A9B3B8] bg-[#181D20]/90 border border-[#364047] hover:border-[#63D7D1] transition-all"
+            className="border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_88%,transparent)] px-3 py-1.5 bp-mono text-[11px] text-[var(--bp-ink-dim)] transition-colors hover:border-[var(--bp-line)] hover:text-[var(--bp-ink)]"
           >
-            Reset View
+            Reset view
           </button>
         </div>
 
         <svg
           ref={svgRef}
-          className="w-full h-full"
+          className="h-full w-full"
           style={{ cursor: dragging ? 'grabbing' : 'grab' }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
-          <defs>
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1a2026" strokeWidth="1" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid)" />
-
           <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
             {/* Edges */}
             {edges.map((edge, i) => {
@@ -168,23 +170,23 @@ export default function CodeMapPage() {
               const to = nodeMap[edge.to];
               if (!from || !to) return null;
               const isRisky = edge.type === 'risky_path';
+              const dim = hoveredNode && hoveredNode !== edge.from && hoveredNode !== edge.to;
               return (
-                <g key={i}>
+                <g key={i} opacity={dim ? 0.2 : 1}>
                   <path
                     d={`M ${from.x + 100} ${from.y + 20} C ${from.x + 180} ${from.y + 20}, ${to.x - 80} ${to.y + 20}, ${to.x} ${to.y + 20}`}
                     fill="none"
-                    stroke={isRisky ? '#F07167' : '#364047'}
-                    strokeWidth={isRisky ? 2 : 1}
-                    strokeDasharray={isRisky ? '4 4' : undefined}
-                    opacity={hoveredNode && hoveredNode !== edge.from && hoveredNode !== edge.to ? 0.2 : 1}
+                    stroke={isRisky ? 'var(--bp-critical)' : 'var(--bp-line-soft)'}
+                    strokeWidth={isRisky ? 1.5 : 1}
+                    strokeDasharray={isRisky ? '5 4' : undefined}
                   />
                   <text
-                    x={((from.x + 100) + to.x) / 2}
+                    x={(from.x + 100 + to.x) / 2}
                     y={Math.min(from.y, to.y) + 14}
-                    fill="#364047"
+                    fill="var(--bp-ink-dim)"
                     fontSize="9"
                     textAnchor="middle"
-                    fontFamily="monospace"
+                    fontFamily="var(--font-jetbrains-mono), monospace"
                   >
                     {edge.label}
                   </text>
@@ -199,6 +201,13 @@ export default function CodeMapPage() {
               const isHovered = hoveredNode === id;
               const hasRisk = node.riskLevel && ['critical', 'high'].includes(node.riskLevel);
               const Icon = config.icon;
+              const stroke = isSelected
+                ? config.color
+                : hasRisk
+                  ? 'var(--bp-critical)'
+                  : isHovered
+                    ? config.color
+                    : 'var(--bp-line-faint)';
 
               return (
                 <g
@@ -209,32 +218,45 @@ export default function CodeMapPage() {
                   onClick={() => setSelectedNode(isSelected ? null : node)}
                   onMouseEnter={() => setHoveredNode(id)}
                   onMouseLeave={() => setHoveredNode(null)}
+                  opacity={hoveredNode && !isHovered && !isSelected ? 0.45 : 1}
                 >
                   <rect
-                    x={0}
-                    y={0}
                     width={160}
                     height={40}
-                    rx={8}
-                    fill={isSelected ? '#22292D' : '#181D20'}
-                    stroke={isSelected ? config.color : hasRisk ? '#F07167' : isHovered ? config.color + '80' : '#364047'}
-                    strokeWidth={isSelected || hasRisk ? 2 : 1}
-                    opacity={hoveredNode && !isHovered && !isSelected ? 0.4 : 1}
+                    fill={isSelected ? 'color-mix(in oklab, var(--bp-line) 10%, var(--bp-ground-2))' : 'var(--bp-ground-2)'}
+                    stroke={stroke}
+                    strokeWidth={isSelected || hasRisk ? 1.5 : 1}
                   />
+                  {/* corner ticks */}
+                  {[
+                    [0, 0],
+                    [160, 0],
+                    [0, 40],
+                    [160, 40],
+                  ].map(([cx, cy], k) => (
+                    <g key={k} stroke={stroke} strokeWidth="1">
+                      <line x1={cx - 3} y1={cy} x2={cx + 3} y2={cy} />
+                      <line x1={cx} y1={cy - 3} x2={cx} y2={cy + 3} />
+                    </g>
+                  ))}
                   {hasRisk && (
-                    <circle cx={155} cy={4} r={4} fill={node.riskLevel === 'critical' ? '#F07167' : '#F1BC62'} />
+                    <rect
+                      x={152}
+                      y={0}
+                      width={4}
+                      height={4}
+                      fill={node.riskLevel === 'critical' ? 'var(--bp-critical)' : 'var(--bp-alert)'}
+                    />
                   )}
                   <foreignObject x={8} y={8} width={144} height={24}>
                     <div className="flex items-center gap-2 overflow-hidden">
-                      <div
-                        className="w-5 h-5 rounded flex items-center justify-center shrink-0"
-                        style={{ background: config.color + '20' }}
+                      <span
+                        className="grid h-5 w-5 shrink-0 place-items-center border"
+                        style={{ borderColor: config.color }}
                       >
-                        <Icon className="w-3 h-3" style={{ color: config.color }} />
-                      </div>
-                      <span className="text-[11px] font-mono truncate" style={{ color: '#F2F4F0' }}>
-                        {node.label}
+                        <Icon className="h-3 w-3" style={{ color: config.color }} strokeWidth={1.5} />
                       </span>
+                      <span className="truncate bp-mono text-[11px] text-[var(--bp-ink)]">{node.label}</span>
                     </div>
                   </foreignObject>
                 </g>
@@ -246,71 +268,74 @@ export default function CodeMapPage() {
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-[40px] mb-3">🗺️</div>
-              <p className="text-[15px] font-medium text-[#F2F4F0]">No nodes to display</p>
-              <p className="text-[13px] text-[#A9B3B8] mt-1">This repository may not have detectable components.</p>
+              <MapIcon className="mx-auto mb-3 h-10 w-10 text-[var(--bp-line)]" strokeWidth={1.25} />
+              <p className="text-[15px] font-medium text-[var(--bp-ink)]">No nodes to display</p>
+              <p className="mt-1 bp-mono text-[12px] text-[var(--bp-ink-dim)]">
+                This repository may not have detectable components.
+              </p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Inspector Panel */}
+      {/* Inspector */}
       {selectedNode && (
-        <div className="w-[320px] shrink-0 border-l border-[#364047] bg-[#181D20] flex flex-col overflow-y-auto">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#364047]">
-            <h3 className="text-[14px] font-semibold text-[#F2F4F0]">Node Inspector</h3>
-            <button onClick={() => setSelectedNode(null)} className="text-[#A9B3B8] hover:text-[#F2F4F0]">
-              <X className="w-4 h-4" />
+        <div className="flex w-full shrink-0 flex-col overflow-y-auto border-l border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] sm:w-[330px]">
+          <div className="flex items-center justify-between border-b border-[var(--bp-line-faint)] px-5 py-4">
+            <h3 className="bp-label">Node inspector</h3>
+            <button
+              onClick={() => setSelectedNode(null)}
+              aria-label="Close inspector"
+              className="text-[var(--bp-ink-dim)] transition-colors hover:text-[var(--bp-ink)]"
+            >
+              <X className="h-4 w-4" strokeWidth={1.5} />
             </button>
           </div>
-          <div className="p-5 space-y-4">
+          <div className="space-y-4 p-5">
             <div>
-              <p className="text-[10px] text-[#A9B3B8] uppercase tracking-widest mb-1">Label</p>
-              <p className="text-[14px] font-mono text-[#F2F4F0] font-medium">{selectedNode.label}</p>
+              <p className="bp-label mb-1">Label</p>
+              <p className="bp-mono text-[14px] text-[var(--bp-ink)]">{selectedNode.label}</p>
             </div>
             <div>
-              <p className="text-[10px] text-[#A9B3B8] uppercase tracking-widest mb-1">Type</p>
+              <p className="bp-label mb-1">Type</p>
               <span
-                className="px-2 py-0.5 rounded text-[11px] font-mono"
+                className="inline-block border px-2 py-0.5 bp-mono text-[11px]"
                 style={{
-                  background: (NODE_TYPE_CONFIG[selectedNode.type]?.color ?? '#364047') + '20',
-                  color: NODE_TYPE_CONFIG[selectedNode.type]?.color ?? '#A9B3B8',
+                  color: NODE_TYPE_CONFIG[selectedNode.type]?.color ?? 'var(--bp-ink-dim)',
+                  borderColor: `color-mix(in oklab, ${NODE_TYPE_CONFIG[selectedNode.type]?.color ?? '#6a828d'} 40%, transparent)`,
                 }}
               >
                 {NODE_TYPE_CONFIG[selectedNode.type]?.label ?? selectedNode.type}
               </span>
             </div>
             <div>
-              <p className="text-[10px] text-[#A9B3B8] uppercase tracking-widest mb-1">Layer</p>
-              <p className="text-[13px] text-[#A9B3B8] capitalize">{selectedNode.layer}</p>
+              <p className="bp-label mb-1">Layer</p>
+              <p className="bp-mono text-[13px] capitalize text-[var(--bp-ink-dim)]">{selectedNode.layer}</p>
             </div>
             {selectedNode.filePath && (
               <div>
-                <p className="text-[10px] text-[#A9B3B8] uppercase tracking-widest mb-1">File</p>
-                <p className="text-[11px] font-mono text-[#A9B3B8] break-all">{selectedNode.filePath}</p>
+                <p className="bp-label mb-1">File</p>
+                <p className="break-all bp-mono text-[11px] text-[var(--bp-ink-dim)]">{selectedNode.filePath}</p>
               </div>
             )}
             {selectedNode.riskLevel && (
               <div>
-                <p className="text-[10px] text-[#A9B3B8] uppercase tracking-widest mb-1">Risk Level</p>
+                <p className="bp-label mb-1">Risk level</p>
                 <SeverityBadge severity={selectedNode.riskLevel} />
               </div>
             )}
             {selectedNodeRelatedFindings.length > 0 && (
               <div>
-                <p className="text-[10px] text-[#A9B3B8] uppercase tracking-widest mb-2">Related Findings</p>
+                <p className="bp-label mb-2">Related findings</p>
                 <div className="space-y-2">
                   {selectedNodeRelatedFindings.map((finding) => (
-                    <div
-                      key={finding.id}
-                      className="p-3 rounded-lg bg-[#22292D] border border-[#364047]"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
+                    <div key={finding.id} className="border border-[var(--bp-line-faint)] p-3">
+                      <div className="mb-1 flex items-center gap-2">
                         <SeverityBadge severity={finding.severity} showDot />
-                        <span className="text-[10px] font-mono text-[#364047]">{finding.ruleId}</span>
+                        <span className="bp-mono text-[10px] text-[var(--bp-ink-dim)]">{finding.ruleId}</span>
                       </div>
-                      <p className="text-[12px] text-[#F2F4F0]">{finding.title}</p>
-                      <p className="text-[11px] text-[#A9B3B8] mt-1">{finding.explanation}</p>
+                      <p className="text-[12px] text-[var(--bp-ink)]">{finding.title}</p>
+                      <p className="mt-1 text-[11px] text-[var(--bp-ink-dim)]">{finding.explanation}</p>
                     </div>
                   ))}
                 </div>
