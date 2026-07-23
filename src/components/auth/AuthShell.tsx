@@ -1,9 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { type ReactNode } from 'react';
 import { RepoRadarLogo } from '@/components/brand/RepoRadarLogo';
 import { BlueprintSchematic } from '@/components/landing/BlueprintSchematic';
+
+// 3D isometric wireframe — same rotating plate as the landing hero,
+// progressively enhancing the 2D schematic once the client mounts.
+const Axonometric = dynamic(() => import('@/components/landing/Axonometric').then((m) => m.Axonometric), {
+  ssr: false,
+  loading: () => <BlueprintSchematic />,
+});
 
 /**
  * Two-pane drafting sheet: the form on the left, a schematic plate on
@@ -57,8 +65,8 @@ export function AuthShell({
         <span className="bp-reg br" style={{ bottom: 28, right: 28 }} />
 
         <p className="bp-label mb-6">FIG.00 — SYSTEM OVERVIEW</p>
-        <div className="bp-frame aspect-[68/47] w-full bg-[color-mix(in_oklab,var(--bp-ground)_50%,transparent)] p-3">
-          <BlueprintSchematic />
+        <div className="bp-frame aspect-[68/47] w-full overflow-hidden bg-[color-mix(in_oklab,var(--bp-ground)_50%,transparent)] p-3">
+          <Axonometric />
         </div>
 
         <div className="mt-8 grid grid-cols-3 border border-[var(--bp-line-faint)] bp-mono text-[10px]">
