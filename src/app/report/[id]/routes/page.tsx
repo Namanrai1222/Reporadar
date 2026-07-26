@@ -1,25 +1,30 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useReportData } from '@/lib/use-report';
 import type { Report } from '@/lib/types';
 import { ArrowRight } from 'lucide-react';
+import { SeverityBadge } from '@/components/ui/SeverityBadge';
 
-function getReport(dataParam: string | null): Report | null {
-  if (!dataParam) return null;
-  try {
-    return JSON.parse(decodeURIComponent(dataParam)) as Report;
-  } catch {
-    return null;
-  }
-}
+// Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
 
 export default function RoutesPage() {
+  const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report = getReport(searchParams.get('data'));
+  const reportData = useReportData(params.id, searchParams.get('data'));
+  const report: Report | null = reportData.report;
+
+  if (reportData.loading) {
+    return (
+      <div className="flex items-center justify-center py-24 bp-mono text-[13px] text-[var(--bp-ink-dim)]">
+        Loading report…
+      </div>
+    );
+  }
 
   if (!report) {
     return (
-      <div className="flex items-center justify-center py-24 text-[#A9B3B8] text-[13px]">
+      <div className="flex items-center justify-center py-24 bp-mono text-[13px] text-[var(--bp-ink-dim)]">
         No report data. Run a scan first.
       </div>
     );
@@ -29,7 +34,6 @@ export default function RoutesPage() {
   const clientPages = report.nodes.filter((n) => n.type === 'client_page');
   const edges = report.edges;
 
-  // Build a map of route -> calling pages
   const routeCallers: Record<string, string[]> = {};
   for (const edge of edges) {
     if (edge.type === 'calls') {
@@ -41,14 +45,14 @@ export default function RoutesPage() {
     }
   }
 
+  const brokenLinks = report.findings.filter((f) => f.category === 'broken_api_link');
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* API Routes */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* API routes */}
         <div>
-          <p className="text-[11px] font-medium text-[#A9B3B8] uppercase tracking-widest mb-3">
-            API Routes ({apiRoutes.length})
-          </p>
+          <p className="bp-label mb-3">API routes ({apiRoutes.length})</p>
           <div className="space-y-2">
             {apiRoutes.length > 0 ? (
               apiRoutes.map((route) => {
@@ -57,51 +61,41 @@ export default function RoutesPage() {
                 return (
                   <div
                     key={route.id}
-                    className="p-4 rounded-xl bg-[#181D20] border border-[#364047] hover:border-[#63D7D1]/40 transition-all"
+                    className="border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_45%,transparent)] p-4 transition-colors hover:border-[var(--bp-line-soft)]"
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="font-mono text-[13px] text-[#63D7D1] font-medium">{route.label}</div>
-                      {finding && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#F07167]/15 text-[#F07167]">
-                          {finding.severity}
-                        </span>
-                      )}
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <span className="bp-mono text-[13px] text-[var(--bp-line)]">{route.label}</span>
+                      {finding && <SeverityBadge severity={finding.severity} showDot={false} />}
                     </div>
                     {route.filePath && (
-                      <p className="text-[11px] font-mono text-[#364047] mb-2">{route.filePath}</p>
+                      <p className="mb-2 bp-mono text-[11px] text-[var(--bp-ink-dim)]">{route.filePath}</p>
                     )}
-                    {callers.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] text-[#A9B3B8]">Called by:</span>
+                    {callers.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="bp-mono text-[10px] text-[var(--bp-ink-dim)]">Called by:</span>
                         {callers.map((c) => (
-                          <span
-                            key={c}
-                            className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#22292D] text-[#A9B3B8]"
-                          >
+                          <span key={c} className="border border-[var(--bp-line-faint)] px-1.5 py-0.5 bp-mono text-[10px] text-[var(--bp-ink-dim)]">
                             {c}
                           </span>
                         ))}
                       </div>
-                    )}
-                    {callers.length === 0 && (
-                      <p className="text-[11px] text-[#364047]">No detected callers</p>
+                    ) : (
+                      <p className="bp-mono text-[11px] text-[color-mix(in_oklab,var(--bp-ink-dim)_70%,transparent)]">
+                        No detected callers
+                      </p>
                     )}
                   </div>
                 );
               })
             ) : (
-              <div className="p-6 rounded-xl bg-[#181D20] border border-[#364047] text-center text-[#A9B3B8] text-[13px]">
-                No API routes detected
-              </div>
+              <EmptyCard>No API routes detected</EmptyCard>
             )}
           </div>
         </div>
 
-        {/* Client Pages */}
+        {/* Client pages */}
         <div>
-          <p className="text-[11px] font-medium text-[#A9B3B8] uppercase tracking-widest mb-3">
-            Client Pages ({clientPages.length})
-          </p>
+          <p className="bp-label mb-3">Client pages ({clientPages.length})</p>
           <div className="space-y-2">
             {clientPages.length > 0 ? (
               clientPages.map((page) => {
@@ -109,19 +103,21 @@ export default function RoutesPage() {
                 return (
                   <div
                     key={page.id}
-                    className="p-4 rounded-xl bg-[#181D20] border border-[#364047] hover:border-[#B9A8FF]/40 transition-all"
+                    className="border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_45%,transparent)] p-4 transition-colors hover:border-[var(--bp-line-soft)]"
                   >
-                    <div className="font-mono text-[13px] text-[#B9A8FF] font-medium mb-1">{page.label}</div>
+                    <div className="mb-1 bp-mono text-[13px]" style={{ color: '#b9a8ff' }}>
+                      {page.label}
+                    </div>
                     {page.filePath && (
-                      <p className="text-[11px] font-mono text-[#364047] mb-2">{page.filePath}</p>
+                      <p className="mb-2 bp-mono text-[11px] text-[var(--bp-ink-dim)]">{page.filePath}</p>
                     )}
                     {outgoing.length > 0 && (
-                      <div className="flex flex-col gap-1 mt-2">
+                      <div className="mt-2 flex flex-col gap-1">
                         {outgoing.map((e, i) => (
-                          <div key={i} className="flex items-center gap-1.5 text-[11px] text-[#A9B3B8]">
-                            <ArrowRight className="w-3 h-3 text-[#364047]" />
-                            <span className="font-mono">{e.to.replace('route:', '')}</span>
-                            <span className="text-[#364047]">({e.label})</span>
+                          <div key={i} className="flex items-center gap-1.5 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+                            <ArrowRight className="h-3 w-3 text-[var(--bp-line)]" strokeWidth={1.5} />
+                            <span>{e.to.replace('route:', '')}</span>
+                            <span className="text-[color-mix(in_oklab,var(--bp-ink-dim)_65%,transparent)]">({e.label})</span>
                           </div>
                         ))}
                       </div>
@@ -130,40 +126,44 @@ export default function RoutesPage() {
                 );
               })
             ) : (
-              <div className="p-6 rounded-xl bg-[#181D20] border border-[#364047] text-center text-[#A9B3B8] text-[13px]">
-                No client pages detected
-              </div>
+              <EmptyCard>No client pages detected</EmptyCard>
             )}
           </div>
         </div>
       </div>
 
-      {/* Broken API links */}
-      {report.findings.filter((f) => f.category === 'broken_api_link').length > 0 && (
+      {brokenLinks.length > 0 && (
         <div>
-          <p className="text-[11px] font-medium text-[#F07167] uppercase tracking-widest mb-3">
-            Broken API Links
+          <p className="bp-label mb-3" style={{ color: 'var(--bp-critical)' }}>
+            Broken API links
           </p>
           <div className="space-y-2">
-            {report.findings
-              .filter((f) => f.category === 'broken_api_link')
-              .map((f) => (
-                <div
-                  key={f.id}
-                  className="p-4 rounded-xl bg-[#F07167]/5 border border-[#F07167]/30 flex items-start gap-3"
-                >
-                  <div className="w-2 h-2 mt-1.5 rounded-full bg-[#F07167] shrink-0" />
-                  <div>
-                    <p className="text-[13px] font-medium text-[#F2F4F0]">{f.evidence}</p>
-                    <p className="text-[11px] text-[#A9B3B8] mt-0.5">
-                      Called from <span className="font-mono">{f.filePath}</span> line {f.lineNumber}
-                    </p>
-                  </div>
+            {brokenLinks.map((f) => (
+              <div
+                key={f.id}
+                className="flex items-start gap-3 border p-4"
+                style={{ borderColor: 'color-mix(in oklab, var(--bp-critical) 30%, transparent)', background: 'color-mix(in oklab, var(--bp-critical) 5%, transparent)' }}
+              >
+                <span className="mt-1.5 h-2 w-2 shrink-0" style={{ background: 'var(--bp-critical)' }} />
+                <div>
+                  <p className="text-[13px] font-medium text-[var(--bp-ink)]">{f.evidence}</p>
+                  <p className="mt-0.5 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+                    Called from {f.filePath} line {f.lineNumber}
+                  </p>
                 </div>
-              ))}
+              </div>
+            ))}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function EmptyCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border border-[var(--bp-line-faint)] p-6 text-center bp-mono text-[13px] text-[var(--bp-ink-dim)]">
+      {children}
     </div>
   );
 }

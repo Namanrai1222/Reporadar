@@ -466,6 +466,14 @@ body {
   100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--signal) 0%, transparent); }
 }
 @keyframes caret { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+@keyframes radar-sweep { to { transform: rotate(360deg); } }
+@keyframes radar-ping {
+  0%   { transform: scale(0.6); opacity: 0.9; }
+  70%  { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.radar-sweep { transform-box: fill-box; transform-origin: center; animation: radar-sweep 4.5s linear infinite; }
+.radar-ping  { transform-box: fill-box; transform-origin: center; animation: radar-ping 3s var(--e-out) infinite; }
 
 .animate-drift  { animation: drift 18s var(--e-inout) infinite; }
 .animate-floaty { animation: floaty 6s var(--e-inout) infinite; }

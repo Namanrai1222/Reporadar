@@ -3,8 +3,22 @@ create extension if not exists "pgcrypto";
 create table if not exists public.users (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
+  plan_tier text not null default 'free' check (plan_tier in ('free', 'pro', 'team', 'enterprise')),
   created_at timestamptz not null default now()
 );
+
+-- Idempotent migration for projects created before plan_tier existed.
+alter table public.users add column if not exists plan_tier text not null default 'free';
+
+-- Ensure migrated databases get the same check constraint as fresh installs.
+do $$
+begin
+  alter table public.users
+    add constraint users_plan_tier_check
+    check (plan_tier in ('free', 'pro', 'team', 'enterprise'));
+exception
+  when duplicate_object then null;
+end $$;
 
 create table if not exists public.scans (
   id uuid primary key default gen_random_uuid(),

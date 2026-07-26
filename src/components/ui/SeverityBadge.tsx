@@ -1,46 +1,30 @@
 import { type Severity } from '@/lib/types';
 
-const SEVERITY_CONFIG: Record<Severity, { label: string; bg: string; text: string; dot: string }> = {
-  critical: {
-    label: 'Critical',
-    bg: 'bg-[#F07167]/15',
-    text: 'text-[#F07167]',
-    dot: 'bg-[#F07167]',
-  },
-  high: {
-    label: 'High',
-    bg: 'bg-[#F1BC62]/15',
-    text: 'text-[#F1BC62]',
-    dot: 'bg-[#F1BC62]',
-  },
-  medium: {
-    label: 'Medium',
-    bg: 'bg-[#B9A8FF]/15',
-    text: 'text-[#B9A8FF]',
-    dot: 'bg-[#B9A8FF]',
-  },
-  low: {
-    label: 'Low',
-    bg: 'bg-[#63D7D1]/15',
-    text: 'text-[#63D7D1]',
-    dot: 'bg-[#63D7D1]',
-  },
-  info: {
-    label: 'Info',
-    bg: 'bg-[#A9B3B8]/15',
-    text: 'text-[#A9B3B8]',
-    dot: 'bg-[#A9B3B8]',
-  },
+const SEVERITY_CONFIG: Record<Severity, { label: string; color: string }> = {
+  critical: { label: 'CRITICAL', color: 'var(--bp-critical)' },
+  high: { label: 'HIGH', color: 'var(--bp-alert)' },
+  medium: { label: 'MEDIUM', color: '#b9a8ff' },
+  low: { label: 'LOW', color: 'var(--bp-line)' },
+  info: { label: 'INFO', color: 'var(--bp-ink-dim)' },
 };
 
 export function SeverityBadge({ severity, showDot = true }: { severity: Severity; showDot?: boolean }) {
-  const config = SEVERITY_CONFIG[severity];
+  const { label, color } = SEVERITY_CONFIG[severity];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium font-mono tracking-wide uppercase ${config.bg} ${config.text}`}
+      className="inline-flex items-center gap-1.5 border px-2 py-0.5 bp-mono text-[10px] tracking-[0.12em]"
+      style={{
+        color,
+        borderColor: `color-mix(in oklab, ${color} 40%, transparent)`,
+        background: `color-mix(in oklab, ${color} 9%, transparent)`,
+      }}
     >
-      {showDot && <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />}
-      {config.label}
+      {showDot && <span className="h-1.5 w-1.5" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />}
+      {label}
     </span>
   );
+}
+
+export function severityColor(severity: Severity): string {
+  return SEVERITY_CONFIG[severity].color;
 }

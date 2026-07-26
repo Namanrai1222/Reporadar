@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { SessionBoot } from "@/components/auth/SessionBoot";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +29,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${jetbrainsMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex flex-col bg-canvas text-text-strong">{children}</body>
+      <body className="min-h-full flex flex-col bg-canvas text-text-strong">
+        <SessionBoot />
+        {children}
+      </body>
     </html>
   );
 }

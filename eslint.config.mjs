@@ -14,6 +14,14 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "take_ss.js",
   ]),
+  {
+    // React Three Fiber mutates live objects (camera/mesh) inside useFrame by
+    // design; the experimental immutability rule flags this valid pattern.
+    files: ["src/components/**/Axonometric.tsx"],
+    rules: {
+      "react-hooks/immutability": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

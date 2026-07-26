@@ -1,5 +1,5 @@
 import type { Finding, Report, ScanMode } from "./types";
-import { getConfig, isSupabaseConfigured } from "./config";
+import { AppError, getConfig, isSupabaseConfigured } from "./config";
 import { SupabaseRestClient } from "./supabase-rest";
 
 export type DbScanStatus =
@@ -29,6 +29,16 @@ export interface PersistedScan {
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
+  /** Populated by listScans via a related embed; null while a scan has no report yet. */
+  report_id?: string | null;
+}
+
+export interface SavedReportSummary {
+  reportId: string;
+  savedAt: string;
+  repoOwner: string;
+  repoName: string;
+  mode: string;
 }
 
 interface PersistedReport {
@@ -56,6 +66,11 @@ export interface PersistenceAdapter {
   saveFindings(scanId: string, userId: string, findings: Finding[]): Promise<void>;
   getReport(reportId: string, userId: string): Promise<Report | null>;
   listScans(userId: string): Promise<PersistedScan[]>;
+  getUserPlan(userId: string): Promise<string>;
+  listSavedReports(userId: string): Promise<SavedReportSummary[]>;
+  saveReportBookmark(userId: string, reportId: string): Promise<void>;
+  removeReportBookmark(userId: string, reportId: string): Promise<void>;
+  isReportSaved(userId: string, reportId: string): Promise<boolean>;
 }
 
 export function createPersistenceAdapter(): PersistenceAdapter {
@@ -64,6 +79,41 @@ export function createPersistenceAdapter(): PersistenceAdapter {
   }
 
   return new SupabasePersistenceAdapter();
+}
+
+const enc = encodeURIComponent;
+
+/**
+ * All Supabase queries here run with the service-role key, which BYPASSES RLS.
+ * Ownership is therefore enforced in application code by the `user_id=eq.` filters
+ * below. This guard makes it impossible to run a scoped query with an empty user id
+ * (which would otherwise silently return another user's rows), so a forgotten filter
+ * fails loudly instead of leaking data. RLS in schema.sql remains as defense-in-depth.
+ */
+function requireUserId(userId: string): void {
+  if (!userId) {
+    throw new AppError("AUTH_REQUIRED", "A user id is required for owner-scoped queries.", 401);
+  }
+}
+
+interface EmbedScan {
+  repo_owner: string;
+  repo_name: string;
+  mode: string;
+}
+interface EmbedReport {
+  scans: EmbedScan | EmbedScan[] | null;
+}
+interface SavedRow {
+  report_id: string;
+  created_at: string;
+  reports: EmbedReport | EmbedReport[] | null;
+}
+
+/** PostgREST returns to-one embeds as an object, but can return arrays — normalize both. */
+function firstOf<T>(value: T | T[] | null | undefined): T | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value ?? undefined;
 }
 
 class SupabasePersistenceAdapter implements PersistenceAdapter {
@@ -79,6 +129,7 @@ class SupabasePersistenceAdapter implements PersistenceAdapter {
     mode: ScanMode;
     traceId: string;
   }) {
+    requireUserId(input.userId);
     const rows = await this.db.table<PersistedScan>("scans", {
       method: "POST",
       prefer: "return=representation",
@@ -101,13 +152,14 @@ class SupabasePersistenceAdapter implements PersistenceAdapter {
   async updateScan(id: string, patch: Partial<PersistedScan>) {
     await this.db.table("scans", {
       method: "PATCH",
-      query: `id=eq.${encodeURIComponent(id)}`,
+      query: `id=eq.${enc(id)}`,
       prefer: "return=minimal",
       body: patch,
     });
   }
 
   async saveReport(scanId: string, userId: string, report: Report) {
+    requireUserId(userId);
     await this.db.table("reports", {
       method: "POST",
       prefer: "return=minimal",
@@ -123,6 +175,7 @@ class SupabasePersistenceAdapter implements PersistenceAdapter {
 
   async saveFindings(scanId: string, userId: string, findings: Finding[]) {
     if (findings.length === 0) return;
+    requireUserId(userId);
 
     await this.db.table("findings", {
       method: "POST",
@@ -148,17 +201,81 @@ class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async getReport(reportId: string, userId: string) {
+    requireUserId(userId);
     const rows = await this.db.table<PersistedReport>("reports", {
-      query: `id=eq.${encodeURIComponent(reportId)}&user_id=eq.${encodeURIComponent(userId)}&limit=1`,
+      query: `id=eq.${enc(reportId)}&user_id=eq.${enc(userId)}&limit=1`,
     });
 
     return rows[0]?.report_json ?? null;
   }
 
   async listScans(userId: string) {
-    return this.db.table<PersistedScan>("scans", {
-      query: `user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=25`,
+    requireUserId(userId);
+    const rows = await this.db.table<PersistedScan & { reports?: Array<{ id: string }> | { id: string } | null }>(
+      "scans",
+      {
+        query: `user_id=eq.${enc(userId)}&select=*,reports(id)&order=created_at.desc&limit=25`,
+      },
+    );
+
+    return rows.map((row) => {
+      const { reports, ...scan } = row;
+      return { ...scan, report_id: firstOf(reports)?.id ?? null } satisfies PersistedScan;
     });
+  }
+
+  async getUserPlan(userId: string) {
+    requireUserId(userId);
+    const rows = await this.db.table<{ plan_tier: string }>("users", {
+      query: `id=eq.${enc(userId)}&select=plan_tier&limit=1`,
+    });
+    return rows[0]?.plan_tier ?? "free";
+  }
+
+  async listSavedReports(userId: string) {
+    requireUserId(userId);
+    const rows = await this.db.table<SavedRow>("saved_reports", {
+      query: `user_id=eq.${enc(userId)}&select=report_id,created_at,reports(scans(repo_owner,repo_name,mode))&order=created_at.desc&limit=50`,
+    });
+
+    return rows.map((row) => {
+      const report = firstOf(row.reports);
+      const scan = firstOf(report?.scans);
+      return {
+        reportId: row.report_id,
+        savedAt: row.created_at,
+        repoOwner: scan?.repo_owner ?? "repository",
+        repoName: scan?.repo_name ?? row.report_id,
+        mode: scan?.mode ?? "full-map",
+      } satisfies SavedReportSummary;
+    });
+  }
+
+  async saveReportBookmark(userId: string, reportId: string) {
+    requireUserId(userId);
+    await this.db.table("saved_reports", {
+      method: "POST",
+      query: "on_conflict=user_id,report_id",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: { user_id: userId, report_id: reportId },
+    });
+  }
+
+  async removeReportBookmark(userId: string, reportId: string) {
+    requireUserId(userId);
+    await this.db.table("saved_reports", {
+      method: "DELETE",
+      query: `user_id=eq.${enc(userId)}&report_id=eq.${enc(reportId)}`,
+      prefer: "return=minimal",
+    });
+  }
+
+  async isReportSaved(userId: string, reportId: string) {
+    requireUserId(userId);
+    const rows = await this.db.table<{ report_id: string }>("saved_reports", {
+      query: `user_id=eq.${enc(userId)}&report_id=eq.${enc(reportId)}&select=report_id&limit=1`,
+    });
+    return rows.length > 0;
   }
 }
 
@@ -181,5 +298,21 @@ class LocalDisabledPersistenceAdapter implements PersistenceAdapter {
 
   async listScans() {
     return [];
+  }
+
+  async getUserPlan() {
+    return "free";
+  }
+
+  async listSavedReports() {
+    return [];
+  }
+
+  async saveReportBookmark() {}
+
+  async removeReportBookmark() {}
+
+  async isReportSaved() {
+    return false;
   }
 }

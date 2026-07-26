@@ -1,25 +1,29 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useReportData } from '@/lib/use-report';
 import type { Report } from '@/lib/types';
 import { BookOpen, Code, Shield, GitBranch, Layers, ArrowRight } from 'lucide-react';
 
-function getReport(dataParam: string | null): Report | null {
-  if (!dataParam) return null;
-  try {
-    return JSON.parse(decodeURIComponent(dataParam)) as Report;
-  } catch {
-    return null;
-  }
-}
+// Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
 
 export default function OnboardingPage() {
+  const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report = getReport(searchParams.get('data'));
+  const reportData = useReportData(params.id, searchParams.get('data'));
+  const report: Report | null = reportData.report;
+
+  if (reportData.loading) {
+    return (
+      <div className="flex items-center justify-center py-24 bp-mono text-[13px] text-[var(--bp-ink-dim)]">
+        Loading report…
+      </div>
+    );
+  }
 
   if (!report) {
     return (
-      <div className="flex items-center justify-center py-24 text-[#A9B3B8] text-[13px]">
+      <div className="flex items-center justify-center py-24 bp-mono text-[13px] text-[var(--bp-ink-dim)]">
         No report data. Run a scan first.
       </div>
     );
@@ -31,26 +35,28 @@ export default function OnboardingPage() {
   const criticalCount = report.findings.filter((f) => f.severity === 'critical').length;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* AI Doc Header */}
-      <div className="p-6 rounded-xl bg-gradient-to-br from-[#B9A8FF]/10 to-[#63D7D1]/5 border border-[#B9A8FF]/30">
+    <div className="mx-auto max-w-3xl space-y-6">
+      {/* Header */}
+      <div className="relative border border-[var(--bp-line-soft)] bg-[color-mix(in_oklab,var(--bp-ground-2)_50%,transparent)] p-6">
+        <span className="bp-reg" style={{ top: -1, left: -1 }} />
+        <span className="bp-reg tr" style={{ top: -1, right: -1 }} />
+        <span className="bp-reg bl" style={{ bottom: -1, left: -1 }} />
+        <span className="bp-reg br" style={{ bottom: -1, right: -1 }} />
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-[#B9A8FF]/20 flex items-center justify-center shrink-0">
-            <BookOpen className="w-5 h-5 text-[#B9A8FF]" />
-          </div>
+          <span className="grid h-10 w-10 shrink-0 place-items-center border border-[var(--bp-line)]">
+            <BookOpen className="h-5 w-5 text-[var(--bp-line)]" strokeWidth={1.5} />
+          </span>
           <div>
-            <h2 className="text-[16px] font-semibold text-[#F2F4F0]">
+            <p className="bp-label mb-1">Generated onboarding</p>
+            <h2 className="bp-mono text-[16px] font-medium text-[var(--bp-ink)]">
               {report.repo.owner}/{report.repo.name}
             </h2>
-            <p className="text-[13px] text-[#A9B3B8] mt-1">
+            <p className="mt-1 text-[13px] text-[var(--bp-ink-dim)]">
               {report.repo.description || 'A repository analyzed by RepoRadar.'}
             </p>
-            <div className="flex flex-wrap gap-2 mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
               {report.stack.map((s) => (
-                <span
-                  key={s}
-                  className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-[#22292D] text-[#A9B3B8] border border-[#364047]"
-                >
+                <span key={s} className="border border-[var(--bp-line-faint)] px-2 py-0.5 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
                   {s}
                 </span>
               ))}
@@ -59,28 +65,24 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Quick stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: 'API Routes', value: apiCount, color: '#63D7D1', icon: Code },
-          { label: 'Client Pages', value: pageCount, color: '#B9A8FF', icon: Layers },
-          { label: 'Env Variables', value: envCount, color: '#F1BC62', icon: Shield },
-          { label: 'Critical Issues', value: criticalCount, color: '#F07167', icon: Shield },
+          { label: 'API routes', value: apiCount, color: 'var(--bp-line)', icon: Code },
+          { label: 'Client pages', value: pageCount, color: '#b9a8ff', icon: Layers },
+          { label: 'Env variables', value: envCount, color: 'var(--bp-alert)', icon: Shield },
+          { label: 'Critical issues', value: criticalCount, color: 'var(--bp-critical)', icon: Shield },
         ].map(({ label, value, color, icon: Icon }) => (
-          <div key={label} className="p-4 rounded-xl bg-[#181D20] border border-[#364047] text-center">
-            <Icon className="w-4 h-4 mx-auto mb-2" style={{ color }} />
-            <p className="text-[20px] font-bold font-mono" style={{ color }}>{value}</p>
-            <p className="text-[11px] text-[#A9B3B8] mt-0.5">{label}</p>
+          <div key={label} className="border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_45%,transparent)] p-4 text-center">
+            <Icon className="mx-auto mb-2 h-4 w-4" style={{ color }} strokeWidth={1.5} />
+            <p className="bp-mono text-[20px]" style={{ color }}>{value}</p>
+            <p className="mt-0.5 bp-label">{label}</p>
           </div>
         ))}
       </div>
 
-      {/* Getting Started */}
-      <div className="p-5 rounded-xl bg-[#181D20] border border-[#364047]">
-        <h3 className="text-[14px] font-semibold text-[#F2F4F0] flex items-center gap-2 mb-4">
-          <GitBranch className="w-4 h-4 text-[#63D7D1]" />
-          Getting Started
-        </h3>
+      {/* Getting started */}
+      <Panel icon={GitBranch} title="Getting started">
         <div className="space-y-3">
           {[
             { step: '1', title: 'Clone the repository', code: `git clone ${report.repo.url}` },
@@ -89,88 +91,80 @@ export default function OnboardingPage() {
             { step: '4', title: 'Start development server', code: 'npm run dev' },
           ].map(({ step, title, code }) => (
             <div key={step} className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-[#22292D] border border-[#364047] flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-[10px] font-mono text-[#A9B3B8]">{step}</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-[13px] text-[#F2F4F0] font-medium">{title}</p>
-                <code className="block mt-1 px-3 py-1.5 rounded bg-[#0d1014] border border-[#364047] text-[12px] font-mono text-[#63D7D1]">
+              <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center border border-[var(--bp-line-faint)] bp-mono text-[10px] text-[var(--bp-line)]">
+                {step}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-medium text-[var(--bp-ink)]">{title}</p>
+                <code className="mt-1 block overflow-x-auto border border-[var(--bp-line-faint)] bg-[var(--bp-ground)] px-3 py-1.5 bp-mono text-[12px] text-[var(--bp-line)]">
                   {code}
                 </code>
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </Panel>
 
-      {/* Architecture Overview */}
-      <div className="p-5 rounded-xl bg-[#181D20] border border-[#364047]">
-        <h3 className="text-[14px] font-semibold text-[#F2F4F0] flex items-center gap-2 mb-4">
-          <Layers className="w-4 h-4 text-[#B9A8FF]" />
-          Architecture Overview
-        </h3>
+      {/* Architecture */}
+      <Panel icon={Layers} title="Architecture overview">
         <div className="space-y-3">
           {[
-            {
-              title: 'Client Layer',
-              desc: `${pageCount} detected client pages and components. These are bundled and served to the browser.`,
-              color: '#B9A8FF',
-            },
-            {
-              title: 'Application Layer',
-              desc: `${apiCount} API routes handle server-side logic, auth, and data processing.`,
-              color: '#63D7D1',
-            },
-            {
-              title: 'Data / Config Layer',
-              desc: `${envCount} environment variables configure the application. Secrets are server-only.`,
-              color: '#F1BC62',
-            },
+            { title: 'Client Layer', desc: `${pageCount} detected client pages and components. These are bundled and served to the browser.`, color: '#b9a8ff' },
+            { title: 'Application Layer', desc: `${apiCount} API routes handle server-side logic, auth, and data processing.`, color: 'var(--bp-line)' },
+            { title: 'Data / Config Layer', desc: `${envCount} environment variables configure the application. Secrets should remain server-only.`, color: 'var(--bp-alert)' },
           ].map(({ title, desc, color }) => (
             <div key={title} className="flex items-start gap-3">
-              <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
+              <span className="mt-1.5 h-2 w-2 shrink-0" style={{ background: color }} />
               <div>
                 <p className="text-[13px] font-semibold" style={{ color }}>{title}</p>
-                <p className="text-[12px] text-[#A9B3B8] mt-0.5 leading-relaxed">{desc}</p>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--bp-ink-dim)]">{desc}</p>
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </Panel>
 
-      {/* Security Checklist */}
+      {/* Security checklist */}
       {report.findings.length > 0 && (
-        <div className="p-5 rounded-xl bg-[#181D20] border border-[#364047]">
-          <h3 className="text-[14px] font-semibold text-[#F2F4F0] flex items-center gap-2 mb-4">
-            <Shield className="w-4 h-4 text-[#F07167]" />
-            Security Checklist for New Contributors
-          </h3>
+        <Panel icon={Shield} title="Security checklist for new contributors">
           <div className="space-y-2">
             {report.findings.slice(0, 5).map((finding) => (
               <div key={finding.id} className="flex items-start gap-2">
-                <ArrowRight className="w-3.5 h-3.5 text-[#364047] shrink-0 mt-0.5" />
+                <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--bp-line)]" strokeWidth={1.5} />
                 <div>
-                  <p className="text-[12px] text-[#F2F4F0] font-medium">{finding.title}</p>
-                  <p className="text-[11px] text-[#A9B3B8]">{finding.suggestedFix}</p>
+                  <p className="text-[12px] font-medium text-[var(--bp-ink)]">{finding.title}</p>
+                  <p className="text-[11px] text-[var(--bp-ink-dim)]">{finding.suggestedFix}</p>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
       )}
 
-      {/* Full Markdown Report */}
-      <details className="p-5 rounded-xl bg-[#181D20] border border-[#364047] group">
-        <summary className="text-[13px] font-semibold text-[#F2F4F0] cursor-pointer flex items-center gap-2 select-none">
-          <Code className="w-4 h-4 text-[#63D7D1]" />
-          Full Markdown Report
-          <span className="ml-auto text-[11px] text-[#A9B3B8] group-open:hidden">Show</span>
-          <span className="ml-auto text-[11px] text-[#A9B3B8] hidden group-open:block">Hide</span>
+      {/* Markdown */}
+      <details className="group border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_45%,transparent)] p-5">
+        <summary className="flex cursor-pointer select-none items-center gap-2 text-[13px] font-semibold text-[var(--bp-ink)]">
+          <Code className="h-4 w-4 text-[var(--bp-line)]" strokeWidth={1.5} />
+          Full markdown report
+          <span className="ml-auto bp-mono text-[11px] text-[var(--bp-ink-dim)] group-open:hidden">Show</span>
+          <span className="ml-auto hidden bp-mono text-[11px] text-[var(--bp-ink-dim)] group-open:block">Hide</span>
         </summary>
-        <pre className="mt-4 p-4 rounded-lg bg-[#0d1014] border border-[#364047] text-[11px] font-mono text-[#A9B3B8] overflow-x-auto whitespace-pre-wrap leading-relaxed">
+        <pre className="mt-4 overflow-x-auto whitespace-pre-wrap border border-[var(--bp-line-faint)] bg-[var(--bp-ground)] p-4 bp-mono text-[11px] leading-relaxed text-[var(--bp-ink-dim)]">
           {report.markdown}
         </pre>
       </details>
+    </div>
+  );
+}
+
+function Panel({ icon: Icon, title, children }: { icon: typeof Shield; title: string; children: React.ReactNode }) {
+  return (
+    <div className="border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_45%,transparent)] p-5">
+      <h3 className="mb-4 flex items-center gap-2 text-[14px] font-semibold text-[var(--bp-ink)]">
+        <Icon className="h-4 w-4 text-[var(--bp-line)]" strokeWidth={1.5} />
+        {title}
+      </h3>
+      {children}
     </div>
   );
 }

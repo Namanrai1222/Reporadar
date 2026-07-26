@@ -1,62 +1,125 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Radar, History, FolderOpen, Settings, ChevronRight } from 'lucide-react';
+import { Radar, History, FolderOpen, Settings, LogIn, LogOut } from 'lucide-react';
+import { RepoRadarLogo } from '@/components/brand/RepoRadarLogo';
+import { useAuth } from '@/lib/use-auth';
 
 const navItems = [
-  { href: '/dashboard', icon: Radar, label: 'New Scan' },
-  { href: '/history', icon: History, label: 'Scan History' },
-  { href: '/reports', icon: FolderOpen, label: 'Saved Reports' },
+  { href: '/dashboard', icon: Radar, label: 'New Scan', code: '01' },
+  { href: '/history', icon: History, label: 'Scan History', code: '02' },
+  { href: '/reports', icon: FolderOpen, label: 'Saved Reports', code: '03' },
 ];
 
 export function GlobalRail() {
   const pathname = usePathname();
+  const { ready, authenticated, email, signOut } = useAuth();
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <nav className="w-[220px] shrink-0 h-screen sticky top-0 border-r border-[#364047] bg-[#181D20] hidden md:flex md:flex-col z-10">
-      {/* Logo */}
-      <div className="px-5 py-6 flex items-center gap-2.5 border-b border-[#364047]">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#63D7D1] to-[#3BA8A3] flex items-center justify-center">
-          <Radar className="w-4 h-4 text-[#111416]" />
+    <>
+      {/* ── desktop rail ── */}
+      <nav className="sticky top-0 z-10 hidden h-screen w-[232px] shrink-0 flex-col border-r border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] md:flex">
+        <div className="flex items-center border-b border-[var(--bp-line-faint)] px-5 py-5">
+          <Link href="/" aria-label="RepoRadar home">
+            <RepoRadarLogo size={28} wordClassName="text-[14px]" />
+          </Link>
         </div>
-        <span className="text-[15px] font-semibold text-[#F2F4F0] tracking-tight">RepoRadar</span>
-      </div>
 
-      {/* Nav Items */}
-      <div className="flex-1 flex flex-col gap-0.5 p-3 pt-4">
+        <div className="flex flex-1 flex-col gap-px p-3 pt-4">
+          <p className="bp-label mb-2 px-2">Navigation</p>
+          {navItems.map(({ href, icon: Icon, label, code }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                className={`group relative flex items-center gap-3 px-3 py-2.5 bp-mono text-[12.5px] transition-colors duration-200 ${
+                  active
+                    ? 'bg-[color-mix(in_oklab,var(--bp-line)_10%,transparent)] text-[var(--bp-ink)]'
+                    : 'text-[var(--bp-ink-dim)] hover:bg-[color-mix(in_oklab,var(--bp-line)_6%,transparent)] hover:text-[var(--bp-ink)]'
+                }`}
+              >
+                {active && <span className="absolute inset-y-0 left-0 w-[2px] bg-[var(--bp-line)]" />}
+                <span className="text-[10px] text-[var(--bp-line)]">{code}</span>
+                <Icon
+                  className={`h-4 w-4 shrink-0 ${active ? 'text-[var(--bp-line)]' : 'text-[var(--bp-ink-dim)] group-hover:text-[var(--bp-line)]'}`}
+                  strokeWidth={1.5}
+                />
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+
+        <div className="border-t border-[var(--bp-line-faint)] p-3">
+          {ready && authenticated ? (
+            <div className="px-3">
+              {email && (
+                <p className="truncate bp-mono text-[11px] text-[var(--bp-ink-dim)]" title={email}>
+                  {email}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={signOut}
+                className="group mt-1 flex items-center gap-2 bp-mono text-[12px] text-[var(--bp-ink-dim)] transition-colors duration-200 hover:text-[var(--bp-ink)]"
+              >
+                <LogOut className="h-4 w-4 shrink-0 group-hover:text-[var(--bp-line)]" strokeWidth={1.5} />
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/signin"
+              className="group flex items-center gap-3 px-3 py-2.5 bp-mono text-[12.5px] text-[var(--bp-ink-dim)] transition-colors duration-200 hover:text-[var(--bp-ink)]"
+            >
+              <LogIn className="h-4 w-4 shrink-0 group-hover:text-[var(--bp-line)]" strokeWidth={1.5} />
+              Sign in
+            </Link>
+          )}
+          <p className="px-3 pt-3 bp-label">v0.1.0 · REV A</p>
+        </div>
+      </nav>
+
+      {/* ── mobile top bar ── */}
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground)_92%,transparent)] px-4 py-3 backdrop-blur-md md:hidden">
+        <Link href="/" aria-label="RepoRadar home">
+          <RepoRadarLogo size={24} wordClassName="text-[13px]" />
+        </Link>
+        <Link
+          href="/settings"
+          aria-label="Settings"
+          className="grid h-9 w-9 place-items-center border border-[var(--bp-line-faint)] text-[var(--bp-ink-dim)]"
+        >
+          <Settings className="h-4 w-4" strokeWidth={1.5} />
+        </Link>
+      </header>
+
+      {/* ── mobile bottom tab bar ── */}
+      <nav
+        aria-label="Primary"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_96%,transparent)] backdrop-blur-md md:hidden"
+      >
         {navItems.map(({ href, icon: Icon, label }) => {
-          const active = pathname === href;
+          const active = isActive(href);
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] transition-all duration-150 group ${
-                active
-                  ? 'bg-[#22292D] text-[#F2F4F0] font-medium'
-                  : 'text-[#A9B3B8] hover:bg-[#22292D] hover:text-[#F2F4F0]'
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex flex-col items-center gap-1 py-2.5 bp-mono text-[10px] tracking-wide transition-colors ${
+                active ? 'text-[var(--bp-ink)]' : 'text-[var(--bp-ink-dim)]'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-[#63D7D1]' : 'text-[#A9B3B8] group-hover:text-[#63D7D1]'}`} />
-              {label}
-              {active && <ChevronRight className="w-3 h-3 ml-auto text-[#364047]" />}
+              {active && <span className="absolute inset-x-5 top-0 h-[2px] bg-[var(--bp-line)]" />}
+              <Icon className={`h-[18px] w-[18px] ${active ? 'text-[var(--bp-line)]' : ''}`} strokeWidth={1.5} />
+              {label.replace('Scan ', '').replace('Saved ', '')}
             </Link>
           );
         })}
-      </div>
-
-      {/* Footer */}
-      <div className="p-3 border-t border-[#364047]">
-        <Link
-          href="/settings"
-          className="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] text-[#A9B3B8] hover:bg-[#22292D] hover:text-[#F2F4F0] transition-all duration-150 group"
-        >
-          <Settings className="w-4 h-4 shrink-0 group-hover:text-[#63D7D1]" />
-          Settings
-        </Link>
-        <div className="px-3 py-2 mt-1">
-          <p className="text-[11px] text-[#364047] font-mono">v0.1.0 · MVP</p>
-        </div>
-      </div>
-    </nav>
+      </nav>
+    </>
   );
 }

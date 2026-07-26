@@ -1,31 +1,39 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Radar, GitBranch, ArrowRight, Lock, Map, BookOpen, Shield, Sparkles, Clock, Star, GitFork } from 'lucide-react';
+import {
+  Radar, GitBranch, ArrowRight, Lock, Map, BookOpen, Shield, Sparkles,
+  Clock, Key, Link2, Leaf, FileText, AlertTriangle,
+} from 'lucide-react';
 import { GlobalRail } from '@/components/ui/GlobalRail';
+import { authFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/use-auth';
 
 const SCAN_MODES = [
   {
     id: 'full-map',
     icon: Map,
     label: 'Full Map',
+    code: 'A',
     description: 'Interactive code map, security scan, and API dependency graph.',
-    accent: '#63D7D1',
+    accent: 'var(--bp-line)',
   },
   {
     id: 'security-lens',
     icon: Shield,
     label: 'Security Lens',
+    code: 'B',
     description: 'Deep vulnerability scan, secret detection, and risk paths.',
-    accent: '#F07167',
+    accent: 'var(--bp-alert)',
   },
   {
     id: 'onboarding',
     icon: BookOpen,
     label: 'Onboarding',
+    code: 'C',
     description: 'AI-generated documentation and architecture walkthrough.',
-    accent: '#B9A8FF',
+    accent: 'var(--bp-ink)',
   },
 ] as const;
 
@@ -35,10 +43,22 @@ const EXAMPLE_REPOS = [
   'https://github.com/shadcn-ui/ui',
 ];
 
-const RECENT_SCANS = [
-  { name: 'vercel/next.js', mode: 'full-map', time: '2 hours ago', stars: 128000, forks: 27000, findings: 3 },
-  { name: 'supabase/supabase', mode: 'security-lens', time: '1 day ago', stars: 72000, forks: 6800, findings: 7 },
-  { name: 'shadcn-ui/ui', mode: 'onboarding', time: '3 days ago', stars: 74000, forks: 4500, findings: 1 },
+interface RecentScan {
+  id: string;
+  name: string;
+  mode: string;
+  time: string;
+  reportId: string | null;
+  url: string;
+}
+
+const DETECTS = [
+  { icon: Key, text: 'Leaked secrets & API keys' },
+  { icon: Map, text: 'Interactive code maps' },
+  { icon: Shield, text: 'Security vulnerabilities' },
+  { icon: Link2, text: 'API dependency graphs' },
+  { icon: Leaf, text: 'Environment variable audit' },
+  { icon: FileText, text: 'Onboarding documentation' },
 ];
 
 export default function HomePage() {
@@ -48,6 +68,49 @@ export default function HomePage() {
   const [mode, setMode] = useState<'full-map' | 'security-lens' | 'onboarding'>('full-map');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { ready, authenticated } = useAuth();
+  const [recent, setRecent] = useState<RecentScan[]>([]);
+
+  useEffect(() => {
+    if (!ready || !authenticated) {
+      setRecent([]);
+      return;
+    }
+    let active = true;
+    authFetch('/api/scans')
+      .then((res) => (res.ok ? res.json() : { scans: [] }))
+      .then(
+        (data: {
+          scans?: Array<{
+            id: string;
+            repo_owner: string;
+            repo_name: string;
+            mode: string;
+            created_at: string;
+            github_url: string;
+            report_id?: string | null;
+          }>;
+        }) => {
+          if (!active) return;
+          setRecent(
+            (data.scans ?? []).slice(0, 4).map((s) => ({
+              id: s.id,
+              name: `${s.repo_owner}/${s.repo_name}`,
+              mode: s.mode,
+              time: new Date(s.created_at).toLocaleDateString(),
+              reportId: s.report_id ?? null,
+              url: s.github_url,
+            })),
+          );
+        },
+      )
+      .catch(() => {
+        if (active) setRecent([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [ready, authenticated]);
 
   async function handleScan(url?: string) {
     const targetUrl = url || githubUrl;
@@ -58,7 +121,7 @@ export default function HomePage() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/scans', {
+      const res = await authFetch('/api/scans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ githubUrl: targetUrl, branch: branch || undefined, mode }),
@@ -77,73 +140,83 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#111416]">
+    <div className="flex min-h-screen flex-col bg-[var(--bp-ground)] md:flex-row">
       <GlobalRail />
 
-      <main className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="border-b border-[#364047] px-8 py-5 flex items-center justify-between">
+      <main className="flex flex-1 flex-col pb-20 md:pb-0">
+        {/* Sheet header */}
+        <div className="flex items-center justify-between border-b border-[var(--bp-line-faint)] px-5 py-4 md:px-8 md:py-5">
           <div>
-            <h1 className="text-[22px] font-semibold text-[#F2F4F0] tracking-tight">New Scan</h1>
-            <p className="text-[13px] text-[#A9B3B8] mt-0.5">Analyze any public GitHub repository in seconds</p>
+            <p className="bp-label mb-1">FIG.01 — INPUT</p>
+            <h1 className="text-[20px] font-semibold tracking-tight text-[var(--bp-ink)] md:text-[22px]">New Scan</h1>
           </div>
           <button
             onClick={handleDemo}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[#A9B3B8] border border-[#364047] hover:border-[#63D7D1] hover:text-[#63D7D1] transition-all"
+            className="inline-flex shrink-0 items-center gap-2 border border-[var(--bp-line-faint)] px-3 py-2 bp-mono text-[11px] tracking-wide text-[var(--bp-ink-dim)] transition-colors hover:border-[var(--bp-line)] hover:text-[var(--bp-ink)]"
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} />
             Try demo
           </button>
         </div>
 
-        <div className="flex-1 flex gap-0">
-          {/* Main Input Area */}
-          <div className="flex-1 flex flex-col items-center justify-center p-8 max-w-2xl mx-auto w-full">
-            {/* Big URL Input */}
+        <div className="flex flex-1">
+          {/* Main input area */}
+          <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-5 py-10 md:px-8">
             <div className="w-full">
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
-                  <Radar className="w-4 h-4 text-[#A9B3B8]" />
-                </div>
+              <p className="bp-label mb-2">TARGET REPOSITORY</p>
+              <div className="relative flex items-stretch border border-[var(--bp-line-soft)] bg-[color-mix(in_oklab,var(--bp-ground-2)_70%,transparent)] transition-colors focus-within:border-[var(--bp-line)]">
+                <span className="bp-reg" style={{ top: -1, left: -1 }} />
+                <span className="bp-reg tr" style={{ top: -1, right: -1 }} />
+                <span className="bp-reg bl" style={{ bottom: -1, left: -1 }} />
+                <span className="bp-reg br" style={{ bottom: -1, right: -1 }} />
+                <span className="grid place-items-center pl-4 pr-3 text-[var(--bp-line)]">
+                  <Radar className="h-4 w-4" strokeWidth={1.5} />
+                </span>
                 <input
                   type="text"
                   value={githubUrl}
                   onChange={(e) => setGithubUrl(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleScan()}
                   placeholder="https://github.com/owner/repository"
-                  className="w-full bg-[#181D20] border border-[#364047] text-[#F2F4F0] placeholder-[#364047] rounded-xl py-4 pl-11 pr-5 text-[15px] font-mono focus:outline-none focus:border-[#63D7D1] focus:ring-1 focus:ring-[#63D7D1]/30 transition-all"
+                  aria-label="GitHub repository URL"
+                  className="w-full bg-transparent py-3.5 pr-4 bp-mono text-[14px] text-[var(--bp-ink)] outline-none placeholder:text-[color-mix(in_oklab,var(--bp-ink-dim)_55%,transparent)]"
                   disabled={loading}
                 />
               </div>
 
-              {/* Branch (optional) */}
-              <div className="mt-2.5 relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                  <GitBranch className="w-3.5 h-3.5 text-[#364047]" />
-                </div>
+              {/* Branch */}
+              <div className="relative mt-2 flex items-stretch border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_50%,transparent)] transition-colors focus-within:border-[var(--bp-line-soft)]">
+                <span className="grid place-items-center pl-4 pr-3 text-[var(--bp-ink-dim)]">
+                  <GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </span>
                 <input
                   type="text"
                   value={branch}
                   onChange={(e) => setBranch(e.target.value)}
-                  placeholder="Branch (optional, defaults to main)"
-                  className="w-full bg-[#181D20] border border-[#364047] text-[#F2F4F0] placeholder-[#364047] rounded-lg py-2.5 pl-10 pr-5 text-[13px] font-mono focus:outline-none focus:border-[#63D7D1]/60 transition-all"
+                  placeholder="branch — optional, defaults to main"
+                  aria-label="Branch"
+                  className="w-full bg-transparent py-2.5 pr-4 bp-mono text-[12.5px] text-[var(--bp-ink)] outline-none placeholder:text-[color-mix(in_oklab,var(--bp-ink-dim)_55%,transparent)]"
                   disabled={loading}
                 />
               </div>
 
               {error && (
-                <div className="mt-3 px-4 py-2.5 rounded-lg bg-[#F07167]/10 border border-[#F07167]/30 text-[#F07167] text-[13px]">
+                <div
+                  role="alert"
+                  className="mt-3 flex items-start gap-2 border border-[color-mix(in_oklab,var(--bp-critical)_45%,transparent)] bg-[color-mix(in_oklab,var(--bp-critical)_10%,transparent)] px-4 py-2.5 bp-mono text-[12px] text-[var(--bp-critical)]"
+                >
+                  <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
                   {error}
                 </div>
               )}
 
-              {/* Example repos */}
+              {/* Examples */}
               <div className="mt-3 flex flex-wrap gap-2">
                 {EXAMPLE_REPOS.map((r) => (
                   <button
                     key={r}
                     onClick={() => setGithubUrl(r)}
-                    className="text-[11px] text-[#A9B3B8] font-mono px-2 py-1 rounded bg-[#22292D] hover:bg-[#364047] hover:text-[#F2F4F0] transition-all"
+                    className="border border-[var(--bp-line-faint)] px-2 py-1 bp-mono text-[11px] text-[var(--bp-ink-dim)] transition-colors hover:border-[var(--bp-line)] hover:text-[var(--bp-ink)]"
                   >
                     {r.replace('https://github.com/', '')}
                   </button>
@@ -152,126 +225,113 @@ export default function HomePage() {
             </div>
 
             {/* Mode selector */}
-            <div className="w-full mt-6">
-              <p className="text-[11px] font-medium text-[#A9B3B8] uppercase tracking-widest mb-3">Scan Mode</p>
-              <div className="grid grid-cols-3 gap-3">
-                {SCAN_MODES.map(({ id, icon: Icon, label, description, accent }) => (
-                  <button
-                    key={id}
-                    onClick={() => setMode(id)}
-                    className={`relative p-4 rounded-xl border text-left transition-all duration-150 ${
-                      mode === id
-                        ? 'border-[#364047] bg-[#22292D]'
-                        : 'border-[#364047]/50 bg-[#181D20] hover:border-[#364047] hover:bg-[#22292D]'
-                    }`}
-                  >
-                    {mode === id && (
-                      <div
-                        className="absolute inset-0 rounded-xl opacity-5"
-                        style={{ background: `radial-gradient(circle at 50% 0%, ${accent}, transparent 60%)` }}
-                      />
-                    )}
-                    <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center mb-3"
-                      style={{ background: `${accent}20` }}
+            <fieldset className="mt-7 w-full">
+              <legend className="bp-label mb-3">SCAN MODE</legend>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {SCAN_MODES.map(({ id, icon: Icon, label, description, accent, code }) => {
+                  const on = mode === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setMode(id)}
+                      aria-pressed={on}
+                      className={`group relative border p-4 text-left transition-colors duration-200 ${
+                        on
+                          ? 'border-[var(--bp-line)] bg-[color-mix(in_oklab,var(--bp-line)_8%,transparent)]'
+                          : 'border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_40%,transparent)] hover:border-[var(--bp-line-soft)]'
+                      }`}
                     >
-                      <Icon className="w-3.5 h-3.5" style={{ color: accent }} />
-                    </div>
-                    <p className="text-[13px] font-semibold text-[#F2F4F0] mb-1">{label}</p>
-                    <p className="text-[11px] text-[#A9B3B8] leading-relaxed">{description}</p>
-                    {mode === id && (
-                      <div
-                        className="absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center"
-                        style={{ background: accent }}
-                      >
-                        <div className="w-2 h-2 rounded-full bg-[#111416]" />
+                      {on && <span className="bp-reg" style={{ top: -1, left: -1 }} />}
+                      {on && <span className="bp-reg br" style={{ bottom: -1, right: -1 }} />}
+                      <div className="mb-3 flex items-center justify-between">
+                        <span
+                          className="grid h-8 w-8 place-items-center border"
+                          style={{ borderColor: on ? accent : 'var(--bp-line-faint)' }}
+                        >
+                          <Icon className="h-4 w-4" strokeWidth={1.5} style={{ color: on ? accent : 'var(--bp-ink-dim)' }} />
+                        </span>
+                        <span className="bp-mono text-[10px]" style={{ color: on ? accent : 'var(--bp-ink-dim)' }}>
+                          {code}
+                        </span>
                       </div>
-                    )}
-                  </button>
-                ))}
+                      <p className="text-[13px] font-semibold text-[var(--bp-ink)]">{label}</p>
+                      <p className="mt-1 text-[11.5px] leading-relaxed text-[var(--bp-ink-dim)]">{description}</p>
+                    </button>
+                  );
+                })}
               </div>
-            </div>
+            </fieldset>
 
-            {/* Submit Button */}
+            {/* Submit */}
             <button
               onClick={() => handleScan()}
               disabled={loading || !githubUrl.trim()}
-              className="mt-6 w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#63D7D1] text-[#111416] font-semibold text-[15px] transition-all duration-150 hover:bg-[#7ee5e0] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="mt-7 flex w-full items-center justify-center gap-2 border border-[var(--bp-line)] bg-[color-mix(in_oklab,var(--bp-line)_14%,transparent)] px-6 py-3.5 bp-mono text-[13px] tracking-wide text-[var(--bp-ink)] transition-colors duration-200 hover:bg-[var(--bp-line)] hover:text-[var(--bp-ground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[color-mix(in_oklab,var(--bp-line)_14%,transparent)] disabled:hover:text-[var(--bp-ink)]"
             >
               {loading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-[#111416]/30 border-t-[#111416] rounded-full animate-spin" />
-                  Scanning...
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--bp-line-faint)] border-t-[var(--bp-line)]" />
+                  RUNNING SCAN…
                 </>
               ) : (
                 <>
-                  <Radar className="w-4 h-4" />
-                  Analyze Repository
-                  <ArrowRight className="w-4 h-4" />
+                  <Radar className="h-4 w-4" strokeWidth={1.5} />
+                  RUN SCAN
+                  <ArrowRight className="h-4 w-4" strokeWidth={1.5} />
                 </>
               )}
             </button>
 
-            <p className="mt-4 text-[11px] text-[#364047] text-center">
-              <Lock className="inline w-3 h-3 mr-1" />
-              We never store your source code. Only masked analysis results and metadata can be saved to your account.
+            <p className="mt-4 flex items-start justify-center gap-1.5 text-center bp-mono text-[10.5px] leading-relaxed text-[var(--bp-ink-dim)]">
+              <Lock className="mt-px h-3 w-3 shrink-0" strokeWidth={1.5} />
+              Source code is never stored. Only masked results and metadata persist.
             </p>
           </div>
 
-          {/* Recent Scans Sidebar */}
-          <div className="w-[280px] shrink-0 border-l border-[#364047] p-5 hidden lg:flex lg:flex-col">
-            <p className="text-[11px] font-medium text-[#A9B3B8] uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Clock className="w-3 h-3" />
-              Recent Scans
+          {/* Recent scans rail */}
+          <aside className="hidden w-[288px] shrink-0 flex-col border-l border-[var(--bp-line-faint)] p-5 lg:flex">
+            <p className="bp-label mb-4 flex items-center gap-2">
+              <Clock className="h-3 w-3" strokeWidth={1.5} />
+              Recent scans
             </p>
             <div className="flex flex-col gap-2">
-              {RECENT_SCANS.map((scan) => (
-                <button
-                  key={scan.name}
-                  onClick={() => setGithubUrl(`https://github.com/${scan.name}`)}
-                  className="p-3 rounded-lg bg-[#181D20] border border-[#364047]/50 hover:border-[#364047] hover:bg-[#22292D] text-left transition-all group"
-                >
-                  <p className="text-[13px] font-mono text-[#F2F4F0] font-medium truncate group-hover:text-[#63D7D1] transition-colors">
-                    {scan.name}
-                  </p>
-                  <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-[11px] text-[#A9B3B8] flex items-center gap-1">
-                      <Star className="w-2.5 h-2.5" />
-                      {(scan.stars / 1000).toFixed(0)}k
-                    </span>
-                    <span className="text-[11px] text-[#A9B3B8] flex items-center gap-1">
-                      <GitFork className="w-2.5 h-2.5" />
-                      {(scan.forks / 1000).toFixed(1)}k
-                    </span>
-                    <span className="text-[11px] text-[#F07167]">
-                      {scan.findings} findings
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-[#364047] mt-1">{scan.time}</p>
-                </button>
-              ))}
+              {!authenticated || recent.length === 0 ? (
+                <p className="bp-mono text-[11px] leading-relaxed text-[var(--bp-ink-dim)]">
+                  {authenticated
+                    ? 'No scans yet. Run one to build your history.'
+                    : 'Sign in to keep a history of your scans.'}
+                </p>
+              ) : (
+                recent.map((scan) => (
+                  <button
+                    key={scan.id}
+                    onClick={() => (scan.reportId ? router.push(`/report/${scan.reportId}`) : setGithubUrl(scan.url))}
+                    className="group border border-[var(--bp-line-faint)] p-3 text-left transition-colors hover:border-[var(--bp-line-soft)]"
+                  >
+                    <p className="truncate bp-mono text-[12.5px] text-[var(--bp-ink)] transition-colors group-hover:text-[var(--bp-line)]">
+                      {scan.name}
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-3 bp-mono text-[10.5px] text-[var(--bp-ink-dim)]">
+                      <span>{scan.mode}</span>
+                      <span className="text-[color-mix(in_oklab,var(--bp-ink-dim)_65%,transparent)]">{scan.time}</span>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
 
-            {/* Feature list */}
-            <div className="mt-6 pt-5 border-t border-[#364047]">
-              <p className="text-[11px] font-medium text-[#A9B3B8] uppercase tracking-widest mb-3">What we detect</p>
-              <ul className="space-y-2">
-                {[
-                  ['🔑', 'Leaked secrets & API keys'],
-                  ['🗺️', 'Interactive code maps'],
-                  ['🛡️', 'Security vulnerabilities'],
-                  ['🔗', 'API dependency graphs'],
-                  ['🌿', 'Environment variable audit'],
-                  ['📚', 'Onboarding documentation'],
-                ].map(([emoji, text]) => (
-                  <li key={text} className="flex items-center gap-2 text-[12px] text-[#A9B3B8]">
-                    <span>{emoji}</span>
+            <div className="mt-6 border-t border-[var(--bp-line-faint)] pt-5">
+              <p className="bp-label mb-3">What we detect</p>
+              <ul className="flex flex-col gap-2.5">
+                {DETECTS.map(({ icon: Icon, text }) => (
+                  <li key={text} className="flex items-center gap-2.5 text-[12px] text-[var(--bp-ink-dim)]">
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--bp-line)]" strokeWidth={1.5} />
                     {text}
                   </li>
                 ))}
               </ul>
             </div>
-          </div>
+          </aside>
         </div>
       </main>
     </div>
