@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   try {
     const user = await getUserFromRequest(request);
     if (!user) {
-      return jsonResponse({ savedReports: [], code: "AUTH_REQUIRED" }, 401);
+      return jsonResponse({ error: "Authentication is required.", code: "AUTH_REQUIRED", savedReports: [] }, 401);
     }
 
     const persistence = createPersistenceAdapter();

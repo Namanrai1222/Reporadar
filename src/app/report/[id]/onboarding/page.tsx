@@ -10,7 +10,16 @@ import { BookOpen, Code, Shield, GitBranch, Layers, ArrowRight } from 'lucide-re
 export default function OnboardingPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report: Report | null = useReportData(params.id, searchParams.get('data')).report;
+  const reportData = useReportData(params.id, searchParams.get('data'));
+  const report: Report | null = reportData.report;
+
+  if (reportData.loading) {
+    return (
+      <div className="flex items-center justify-center py-24 bp-mono text-[13px] text-[var(--bp-ink-dim)]">
+        Loading report…
+      </div>
+    );
+  }
 
   if (!report) {
     return (

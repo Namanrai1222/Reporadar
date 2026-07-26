@@ -65,7 +65,8 @@ function buildLayout(nodes: CodeNode[]): GraphNode[] {
 export default function CodeMapPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report: Report | null = useReportData(params.id, searchParams.get('data')).report;
+  const reportData = useReportData(params.id, searchParams.get('data'));
+  const report: Report | null = reportData.report;
   const svgRef = useRef<SVGSVGElement>(null);
 
   const [selectedNode, setSelectedNode] = useState<CodeNode | null>(null);
@@ -114,6 +115,14 @@ export default function CodeMapPage() {
 
   const selectedNodeRelatedFindings =
     report?.findings.filter((f) => f.relatedNodeIds.includes(selectedNode?.id ?? '')) ?? [];
+
+  if (reportData.loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center bp-mono text-[13px] text-[var(--bp-ink-dim)]">
+        Loading report…
+      </div>
+    );
+  }
 
   if (!report) {
     return (

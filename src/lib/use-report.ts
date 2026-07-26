@@ -22,7 +22,12 @@ function load(id: string) {
         const data = (await res.json()) as { report?: Report; saved?: boolean };
         return { report: data.report ?? null, saved: Boolean(data.saved) };
       })
-      .catch(() => ({ report: null, saved: false }));
+      .catch(() => ({ report: null, saved: false }))
+      .finally(() => {
+        // De-dupe only concurrent in-flight callers; later mounts must re-fetch
+        // so failures can recover and saved-state changes aren't served stale.
+        cache.delete(id);
+      });
     cache.set(id, pending);
   }
   return pending;

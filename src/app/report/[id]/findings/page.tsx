@@ -27,12 +27,21 @@ const CATEGORY_LABELS: Record<Finding['category'], string> = {
 export default function FindingsPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report: Report | null = useReportData(params.id, searchParams.get('data')).report;
+  const reportData = useReportData(params.id, searchParams.get('data'));
+  const report: Report | null = reportData.report;
 
   const [severityFilter, setSeverityFilter] = useState<Set<Severity>>(new Set());
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [sortField, setSortField] = useState<'severity' | 'file'>('severity');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  if (reportData.loading) {
+    return (
+      <div className="flex items-center justify-center py-24 bp-mono text-[13px] text-[var(--bp-ink-dim)]">
+        Loading report…
+      </div>
+    );
+  }
 
   if (!report) {
     return (

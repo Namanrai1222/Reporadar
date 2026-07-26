@@ -35,6 +35,11 @@ class MemoryRateStore implements RateStore {
 
   async increment(key: string, ttlSeconds: number): Promise<number> {
     const now = Date.now();
+    // Sweep expired keys so a long-lived process without Redis can't grow the
+    // map without bound (daily keys and per-IP fingerprints are never reused).
+    if (this.map.size > 1000) {
+      for (const [k, v] of this.map) if (v.expiresAt <= now) this.map.delete(k);
+    }
     const entry = this.map.get(key);
     if (!entry || entry.expiresAt <= now) {
       this.map.set(key, { count: 1, expiresAt: now + ttlSeconds * 1000 });
@@ -81,7 +86,13 @@ class RedisRateStore implements RateStore {
   }
 
   async decrement(key: string): Promise<void> {
-    await this.command(`decr/${encodeURIComponent(key)}`);
+    const encoded = encodeURIComponent(key);
+    const { result } = await this.command(`decr/${encoded}`);
+    const value = typeof result === "number" ? result : Number(result ?? 0);
+    // A DECR on an expired/missing key resurrects it at -1 with no TTL, which
+    // would permanently offset the concurrency guard. Drop it so the counter
+    // re-derives from zero on the next increment (which re-sets the TTL).
+    if (value < 0) await this.command(`del/${encoded}`);
   }
 }
 

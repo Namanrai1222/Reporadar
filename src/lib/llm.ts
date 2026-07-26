@@ -28,6 +28,9 @@ const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 const OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free";
 const OLLAMA_MODEL = "llama3.1";
 
+/** Abort a hung provider so it can't hold a semaphore slot and stall the fallback chain. */
+const LLM_TIMEOUT_MS = 30_000;
+
 /**
  * A single attempt in the fallback chain. Each Groq/OpenRouter *key* is its own
  * backend, so a 429 (or any failure) advances to the next key and then the next
@@ -48,15 +51,19 @@ class Semaphore {
   constructor(private readonly max: number) {}
 
   async run<T>(task: () => Promise<T>): Promise<T> {
+    // Acquire atomically: waiters inherit the in-flight slot on release, so a
+    // caller arriving in the release window can't slip past `max`.
     if (this.active >= this.max) {
       await new Promise<void>((resolve) => this.waiters.push(resolve));
+    } else {
+      this.active += 1;
     }
-    this.active += 1;
     try {
       return await task();
     } finally {
-      this.active -= 1;
-      this.waiters.shift()?.();
+      const next = this.waiters.shift();
+      if (next) next();
+      else this.active -= 1;
     }
   }
 }
@@ -99,6 +106,7 @@ async function callChatCompletions(
       ],
     }),
     cache: "no-store",
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
 
   if (response.status === 429) throw new RateLimitError("rate limited");
@@ -114,6 +122,7 @@ async function callOllama(baseUrl: string, prompt: string): Promise<string> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
     cache: "no-store",
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`ollama failed: ${response.status}`);
   const payload = (await response.json()) as { response?: string };

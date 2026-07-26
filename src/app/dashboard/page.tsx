@@ -295,7 +295,7 @@ export default function HomePage() {
               Recent scans
             </p>
             <div className="flex flex-col gap-2">
-              {recent.length === 0 ? (
+              {!authenticated || recent.length === 0 ? (
                 <p className="bp-mono text-[11px] leading-relaxed text-[var(--bp-ink-dim)]">
                   {authenticated
                     ? 'No scans yet. Run one to build your history.'

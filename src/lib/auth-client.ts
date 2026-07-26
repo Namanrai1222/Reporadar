@@ -161,7 +161,9 @@ export function getSession(): { token: string; email?: string } | null {
   if (!token) return null;
   const payload = decodeJwtPayload(token);
   if (payload?.exp && payload.exp * 1000 <= Date.now()) {
-    clearSession();
+    // Access token expired — drop it but keep the refresh token so
+    // refreshSession() can still recover the session on the next request.
+    if (typeof window !== 'undefined') window.localStorage.removeItem(TOKEN_KEY);
     return null;
   }
   return { token, email: payload?.email };

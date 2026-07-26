@@ -11,7 +11,7 @@ import { retrieveArtifacts, applySynthesis, RETRIEVAL_VERSION } from "./retrieva
 import { assertSafeServerEnvironment, parseGitHubRepoUrl } from "./security";
 import { createQueueAdapter, createQueueJob } from "./queue";
 import { beginConcurrentJob, consumeDailyScan, dailyLimitForPlan } from "./rate-limit";
-import { createHash } from "crypto";
+import { createHmac } from "node:crypto";
 
 const MODES: ScanMode[] = ["full-map", "security-lens", "onboarding"];
 const SCANNER_VERSION = "rules-v1";
@@ -180,11 +180,14 @@ async function runScanImmediately(payload: ScanRequest, userId?: string, scanId?
   }
 }
 
-/** Stable, non-identifying per-visitor key for anonymous rate limiting (hashed IP). */
+/** Stable, non-identifying per-visitor key for anonymous rate limiting (keyed hash of IP). */
 function clientFingerprint(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for") ?? "";
   const ip = forwarded.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
-  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
+  // Keyed with a server-side secret so the small IPv4 space can't be brute-forced
+  // to reverse the digest (an unsalted SHA-256 of an IP is only a pseudonym).
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "reporadar-local";
+  return createHmac("sha256", secret).update(ip).digest("hex").slice(0, 32);
 }
 
 export function sanitizeScanPayload(payload: Partial<ScanRequest>): ScanRequest {
