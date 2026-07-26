@@ -72,7 +72,6 @@ export default function SignInPage() {
         <Field
           id="password"
           label="Password"
-          hint="min 8 characters"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}

@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useReportData } from '@/lib/use-report';
 import type { Report } from '@/lib/types';
 import { ArrowRight } from 'lucide-react';
+import { SeverityBadge } from '@/components/ui/SeverityBadge';
 
 // Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
 
@@ -55,14 +56,7 @@ export default function RoutesPage() {
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">
                       <span className="bp-mono text-[13px] text-[var(--bp-line)]">{route.label}</span>
-                      {finding && (
-                        <span
-                          className="border px-2 py-0.5 bp-mono text-[10px] uppercase"
-                          style={{ color: 'var(--bp-critical)', borderColor: 'color-mix(in oklab, var(--bp-critical) 40%, transparent)' }}
-                        >
-                          {finding.severity}
-                        </span>
-                      )}
+                      {finding && <SeverityBadge severity={finding.severity} showDot={false} />}
                     </div>
                     {route.filePath && (
                       <p className="mb-2 bp-mono text-[11px] text-[var(--bp-ink-dim)]">{route.filePath}</p>

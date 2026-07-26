@@ -88,7 +88,7 @@ export default function FindingsPage() {
             <button
               key={s}
               onClick={() => toggleSeverity(s)}
-              aria-pressed={severityFilter.has(s)}
+              aria-pressed={severityFilter.size === 0 || severityFilter.has(s)}
               className={`transition-opacity ${severityFilter.size === 0 || severityFilter.has(s) ? 'opacity-100' : 'opacity-35 hover:opacity-70'}`}
             >
               <SeverityBadge severity={s} showDot />

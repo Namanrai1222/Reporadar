@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useMemo } from 'react';
+import { useReducedMotion } from 'framer-motion';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Edges, Line, Html, Grid, AdaptiveDpr } from '@react-three/drei';
 import * as THREE from 'three';
@@ -136,13 +137,14 @@ function DimensionMeasure() {
   );
 }
 
-function Rig({ pointer }: { pointer: React.RefObject<{ x: number; y: number }> }) {
+function Rig({ pointer, reduce }: { pointer: React.RefObject<{ x: number; y: number }>; reduce: boolean }) {
   const group = useRef<THREE.Group>(null);
   const { camera } = useThree();
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
     if (group.current) {
-      const targetY = t * 0.12 + (pointer.current?.x ?? 0) * 0.35;
+      // Reduced-motion: drop the perpetual auto-rotation term, keep pointer parallax.
+      const targetY = (reduce ? 0 : t * 0.12) + (pointer.current?.x ?? 0) * 0.35;
       group.current.rotation.y += (targetY - group.current.rotation.y) * 0.04;
     }
     // gentle parallax dolly — mutating camera in useFrame is the standard R3F pattern
@@ -179,6 +181,7 @@ function Rig({ pointer }: { pointer: React.RefObject<{ x: number; y: number }> }
 
 export function Axonometric() {
   const pointer = useRef({ x: 0, y: 0 });
+  const reduce = useReducedMotion() ?? false;
   return (
     <div
       className="h-full w-full"
@@ -199,7 +202,7 @@ export function Axonometric() {
         style={{ background: 'transparent' }}
       >
         <AdaptiveDpr pixelated />
-        <Rig pointer={pointer} />
+        <Rig pointer={pointer} reduce={reduce} />
       </Canvas>
     </div>
   );

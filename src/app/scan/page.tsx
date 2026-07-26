@@ -29,10 +29,13 @@ function ScanContent() {
     let timer: ReturnType<typeof setTimeout>;
     let cancelled = false;
 
+    const addStage = (id: string) =>
+      setCompletedStages((prev) => (prev.includes(id) ? prev : [...prev, id]));
+
     const advance = () => {
       if (cancelled) return;
       if (stage < STAGES.length - 1) {
-        setCompletedStages((prev) => [...prev, STAGES[stage].id]);
+        addStage(STAGES[stage].id);
         stage++;
         setCurrentStage(stage);
 
@@ -43,7 +46,7 @@ function ScanContent() {
 
         timer = setTimeout(advance, STAGES[stage].duration);
       } else {
-        setCompletedStages((prev) => [...prev, STAGES[stage].id]);
+        addStage(STAGES[stage].id);
         const reportData = sessionStorage.getItem('pending_report');
         if (reportData) {
           const report = JSON.parse(reportData);
@@ -60,7 +63,7 @@ function ScanContent() {
     };
   }, [router]);
 
-  const pct = Math.round((completedStages.length / STAGES.length) * 100);
+  const pct = Math.min(100, Math.round((completedStages.length / STAGES.length) * 100));
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--bp-ground)] lg:flex-row">

@@ -8,6 +8,10 @@
  */
 
 export const TOKEN_KEY = 'reporadar.access_token';
+const REFRESH_TOKEN_KEY = 'reporadar.refresh_token';
+
+/** Fail auth requests instead of hanging forever if GoTrue is unreachable. */
+const AUTH_TIMEOUT_MS = 15000;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -21,13 +25,27 @@ export function getAccessToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
 }
 
+function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
 export function clearSession(): void {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 function storeToken(token: string): void {
   window.localStorage.setItem(TOKEN_KEY, token);
+}
+
+/** Persist tokens from a GoTrue response; refresh token enables session renewal. */
+function storeSession(data: { access_token?: string; refresh_token?: string }): boolean {
+  if (!data.access_token) return false;
+  storeToken(data.access_token);
+  if (data.refresh_token) window.localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+  return true;
 }
 
 interface GoTrueError {
@@ -52,17 +70,26 @@ async function authRequest(path: string, body: Record<string, string>, fallbackE
     );
   }
 
-  const res = await fetch(`${SUPABASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: SUPABASE_ANON_KEY as string,
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${SUPABASE_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY as string,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      throw new Error('The authentication server took too long to respond. Please try again.');
+    }
+    throw new Error('Could not reach the authentication server. Check your connection and try again.');
+  }
 
   if (!res.ok) throw new Error(await readError(res, fallbackError));
-  return (await res.json()) as { access_token?: string };
+  return (await res.json()) as { access_token?: string; refresh_token?: string };
 }
 
 export async function signIn(email: string, password: string): Promise<void> {
@@ -71,17 +98,34 @@ export async function signIn(email: string, password: string): Promise<void> {
     { email, password },
     'Could not sign in. Check your email and password.',
   );
-  if (data.access_token) storeToken(data.access_token);
+  storeSession(data);
 }
 
 /** Returns true when the account is active immediately, false when email confirmation is pending. */
 export async function signUp(email: string, password: string): Promise<boolean> {
   const data = await authRequest('/auth/v1/signup', { email, password }, 'Could not create the account.');
-  if (data.access_token) {
-    storeToken(data.access_token);
-    return true;
+  return storeSession(data);
+}
+
+/**
+ * Exchange the stored refresh token for a fresh access token. Call this when a
+ * request 401s or the access token is near expiry. Returns false (and clears the
+ * session) when no valid refresh token is available.
+ */
+export async function refreshSession(): Promise<boolean> {
+  const refresh_token = getRefreshToken();
+  if (!refresh_token) return false;
+  try {
+    const data = await authRequest(
+      '/auth/v1/token?grant_type=refresh_token',
+      { refresh_token },
+      'Session expired. Please sign in again.',
+    );
+    return storeSession(data);
+  } catch {
+    clearSession();
+    return false;
   }
-  return false;
 }
 
 /** Redirects the browser to the GitHub OAuth consent screen. */
@@ -135,7 +179,7 @@ export function captureOAuthRedirect(): boolean {
   const params = new URLSearchParams(hash.replace(/^#/, ''));
   const token = params.get('access_token');
   if (!token) return false;
-  storeToken(token);
+  storeSession({ access_token: token, refresh_token: params.get('refresh_token') ?? undefined });
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
   return true;
 }

@@ -63,7 +63,7 @@ function Nav() {
           <div className="flex items-center gap-5">
             <Link
               href="/signin"
-              className="bp-mono hidden whitespace-nowrap text-[12px] tracking-wide text-[var(--bp-ink-dim)] transition-colors hover:text-[var(--bp-ink)] lg:block"
+              className="bp-mono whitespace-nowrap text-[12px] tracking-wide text-[var(--bp-ink-dim)] transition-colors hover:text-[var(--bp-ink)]"
             >
               Sign in
             </Link>
@@ -254,11 +254,15 @@ const CONSOLE_LINES = [
 ];
 
 function LiveReadout() {
+  const reduce = useReducedMotion();
   const [step, setStep] = useState(0);
   useEffect(() => {
+    // Reduced-motion: no interval; the derived shownStep reveals the full log statically.
+    if (reduce) return;
     const t = setInterval(() => setStep((s) => (s + 1) % (CONSOLE_LINES.length + 1)), 1500);
     return () => clearInterval(t);
-  }, []);
+  }, [reduce]);
+  const shownStep = reduce ? CONSOLE_LINES.length : step;
 
   return (
     <div className="bp-frame relative bg-[color-mix(in_oklab,var(--bp-ground-2)_60%,transparent)]">
@@ -272,7 +276,7 @@ function LiveReadout() {
       </div>
       <div className="min-h-[232px] p-5 bp-mono text-[12.5px] leading-[1.9]">
         {CONSOLE_LINES.map((line, i) => {
-          if (i > step) return null;
+          if (i > shownStep) return null;
           return (
             <motion.div
               key={i}
@@ -284,11 +288,11 @@ function LiveReadout() {
               <span className="w-11 shrink-0 text-[10px]" style={{ color: line.color }}>
                 [{line.tag}]
               </span>
-              <span style={{ color: i === step ? 'var(--bp-ink)' : 'var(--bp-ink-dim)' }}>{line.text}</span>
+              <span style={{ color: i === shownStep ? 'var(--bp-ink)' : 'var(--bp-ink-dim)' }}>{line.text}</span>
             </motion.div>
           );
         })}
-        {step < CONSOLE_LINES.length && (
+        {shownStep < CONSOLE_LINES.length && (
           <div className="mt-1 flex items-center gap-2 text-[var(--bp-line)]">
             <span className="bp-mono text-[10px]">&gt;</span>
             <span className="inline-block h-[1.05em] w-[0.55ch] animate-pulse bg-[var(--bp-line)] align-text-bottom" />

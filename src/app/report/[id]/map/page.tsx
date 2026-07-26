@@ -19,12 +19,11 @@ const NODE_TYPE_CONFIG: Record<CodeNode['type'], { label: string; color: string;
   file: { label: 'File', color: '#6a828d', icon: FileCode },
 };
 
-const LAYER_LEGEND: [string, string][] = [
-  ['Client', '#b9a8ff'],
-  ['Application', '#7fb6c9'],
-  ['External', '#ff6b5e'],
-  ['Data', '#f4b45a'],
-];
+// Legend mirrors the actual per-type node colors (nodes are colored by type,
+// not by layer), so what the reader sees on the canvas matches the key.
+const TYPE_LEGEND: [string, string][] = (Object.keys(NODE_TYPE_CONFIG) as CodeNode['type'][]).map(
+  (t) => [NODE_TYPE_CONFIG[t].label, NODE_TYPE_CONFIG[t].color],
+);
 
 interface GraphNode {
   id: string;
@@ -126,12 +125,12 @@ export default function CodeMapPage() {
 
   return (
     <div className="-mx-5 flex h-[calc(100vh-190px)] overflow-hidden md:-mx-6">
-      {/* Canvas */}
-      <div className="bp-paper relative flex-1 overflow-hidden">
+      {/* Canvas — yields to the inspector on mobile (matches findings-page pattern) */}
+      <div className={`bp-paper relative flex-1 overflow-hidden ${selectedNode ? 'hidden sm:block' : ''}`}>
         {/* Legend */}
         <div className="absolute left-4 top-4 z-10 border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_88%,transparent)] p-3 backdrop-blur-sm">
-          <p className="bp-label mb-2">Layers</p>
-          {LAYER_LEGEND.map(([label, color]) => (
+          <p className="bp-label mb-2">Node types</p>
+          {TYPE_LEGEND.map(([label, color]) => (
             <div key={label} className="mb-1 flex items-center gap-2 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
               <span className="h-2 w-2" style={{ background: color }} />
               {label}
