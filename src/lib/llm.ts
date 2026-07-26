@@ -203,9 +203,12 @@ class ChainedLlmProvider implements LlmProvider {
               estimatedCostUsd: 0,
             },
           };
-        } catch {
+        } catch (error) {
           retries += 1;
-          // Any failure (429, network, empty) advances to the next key/provider.
+          // Any failure (429, network, timeout, empty) advances to the next key/provider,
+          // but surface it so provider outages aren't invisible in the logs.
+          const reason = error instanceof Error ? error.message : String(error);
+          console.warn(`[llm] backend ${backend.name} (${backend.model}) failed: ${reason}`);
         }
       }
 

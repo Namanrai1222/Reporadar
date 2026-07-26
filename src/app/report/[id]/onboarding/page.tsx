@@ -111,7 +111,7 @@ export default function OnboardingPage() {
           {[
             { title: 'Client Layer', desc: `${pageCount} detected client pages and components. These are bundled and served to the browser.`, color: '#b9a8ff' },
             { title: 'Application Layer', desc: `${apiCount} API routes handle server-side logic, auth, and data processing.`, color: 'var(--bp-line)' },
-            { title: 'Data / Config Layer', desc: `${envCount} environment variables configure the application. Secrets are server-only.`, color: 'var(--bp-alert)' },
+            { title: 'Data / Config Layer', desc: `${envCount} environment variables configure the application. Secrets should remain server-only.`, color: 'var(--bp-alert)' },
           ].map(({ title, desc, color }) => (
             <div key={title} className="flex items-start gap-3">
               <span className="mt-1.5 h-2 w-2 shrink-0" style={{ background: color }} />

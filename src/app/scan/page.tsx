@@ -80,7 +80,14 @@ function ScanContent() {
               <span>PROGRESS</span>
               <span>{pct}%</span>
             </div>
-            <div className="relative h-[6px] border border-[var(--bp-line-faint)]">
+            <div
+              className="relative h-[6px] border border-[var(--bp-line-faint)]"
+              role="progressbar"
+              aria-label="Scan progress"
+              aria-valuenow={pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
               <div
                 className="absolute inset-y-0 left-0 bg-[var(--bp-line)] transition-all duration-500 ease-out"
                 style={{ width: `${pct}%` }}
@@ -151,7 +158,7 @@ function ScanContent() {
           Findings are masked until analysis completes.
         </p>
 
-        <div className="flex flex-1 flex-col gap-2">
+        <div className="flex flex-1 flex-col gap-2" role="log" aria-live="polite" aria-label="Scan discoveries">
           {discoveries.map((d, i) => {
             const warn = d.includes('Warning');
             return (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Report } from './types';
 import { authFetch } from './api-client';
 
@@ -47,26 +47,29 @@ function parseInline(inlineData: string | null): Report | null {
  * the persisted report by id (History / Saved Reports navigation).
  */
 export function useReportData(reportId: string, inlineData: string | null): ReportData {
-  const [state, setState] = useState<ReportData>(() => {
-    const inline = parseInline(inlineData);
-    return inline ? { report: inline, saved: false, loading: false } : { report: null, saved: false, loading: true };
-  });
+  // Inline data (fresh scan) resolves synchronously — derived, not stored in state.
+  const inline = useMemo(() => parseInline(inlineData), [inlineData]);
+  const [fetched, setFetched] = useState<{ id: string; report: Report | null; saved: boolean } | null>(null);
 
   useEffect(() => {
-    const inline = parseInline(inlineData);
-    if (inline) {
-      setState({ report: inline, saved: false, loading: false });
-      return;
-    }
+    if (inline) return; // no fetch needed for inline reports
     let active = true;
-    setState((prev) => ({ ...prev, loading: true }));
+    // setState only in the async callback (never synchronously in the effect body).
     load(reportId).then((result) => {
-      if (active) setState({ ...result, loading: false });
+      if (active) setFetched({ id: reportId, ...result });
     });
     return () => {
       active = false;
     };
-  }, [reportId, inlineData]);
+  }, [reportId, inline]);
 
-  return state;
+  if (inline) return { report: inline, saved: false, loading: false };
+
+  // Only trust a fetched result that belongs to the current id; otherwise we're loading.
+  const current = fetched && fetched.id === reportId ? fetched : null;
+  return {
+    report: current ? current.report : null,
+    saved: current ? current.saved : false,
+    loading: current === null,
+  };
 }
