@@ -23,11 +23,17 @@ export class SupabaseRestClient {
       endpoint.search = options.query;
     }
 
+    // Legacy service_role keys are JWTs and are read from the Authorization header
+    // by PostgREST. The newer `sb_secret_...` keys are opaque (not JWTs) and MUST be
+    // sent only via `apikey` — putting them in Authorization makes PostgREST try to
+    // parse them as a JWT and reject the request. Detect the format and adapt.
+    const isJwtKey = this.serviceRoleKey.startsWith("eyJ");
+
     const response = await fetch(endpoint, {
       method: options.method ?? "GET",
       headers: {
         apikey: this.serviceRoleKey,
-        Authorization: `Bearer ${this.serviceRoleKey}`,
+        ...(isJwtKey ? { Authorization: `Bearer ${this.serviceRoleKey}` } : {}),
         "Content-Type": "application/json",
         ...(options.prefer ? { Prefer: options.prefer } : {}),
       },

@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Radar, History, FolderOpen, Settings } from 'lucide-react';
+import { Radar, History, FolderOpen, Settings, LogIn, LogOut } from 'lucide-react';
 import { RepoRadarLogo } from '@/components/brand/RepoRadarLogo';
+import { useAuth } from '@/lib/use-auth';
 
 const navItems = [
   { href: '/dashboard', icon: Radar, label: 'New Scan', code: '01' },
@@ -12,6 +13,7 @@ const navItems = [
 
 export function GlobalRail() {
   const pathname = usePathname();
+  const { ready, authenticated, email, signOut } = useAuth();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
@@ -52,13 +54,31 @@ export function GlobalRail() {
         </div>
 
         <div className="border-t border-[var(--bp-line-faint)] p-3">
-          <Link
-            href="/settings"
-            className="group flex items-center gap-3 px-3 py-2.5 bp-mono text-[12.5px] text-[var(--bp-ink-dim)] transition-colors duration-200 hover:text-[var(--bp-ink)]"
-          >
-            <Settings className="h-4 w-4 shrink-0 group-hover:text-[var(--bp-line)]" strokeWidth={1.5} />
-            Settings
-          </Link>
+          {ready && authenticated ? (
+            <div className="px-3">
+              {email && (
+                <p className="truncate bp-mono text-[11px] text-[var(--bp-ink-dim)]" title={email}>
+                  {email}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={signOut}
+                className="group mt-1 flex items-center gap-2 bp-mono text-[12px] text-[var(--bp-ink-dim)] transition-colors duration-200 hover:text-[var(--bp-ink)]"
+              >
+                <LogOut className="h-4 w-4 shrink-0 group-hover:text-[var(--bp-line)]" strokeWidth={1.5} />
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/signin"
+              className="group flex items-center gap-3 px-3 py-2.5 bp-mono text-[12.5px] text-[var(--bp-ink-dim)] transition-colors duration-200 hover:text-[var(--bp-ink)]"
+            >
+              <LogIn className="h-4 w-4 shrink-0 group-hover:text-[var(--bp-line)]" strokeWidth={1.5} />
+              Sign in
+            </Link>
+          )}
           <p className="px-3 pt-3 bp-label">v0.1.0 · REV A</p>
         </div>
       </nav>

@@ -1,10 +1,16 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Star, GitFork, Globe, Map, Shield, GitMerge, Leaf, BookOpen, Download, ArrowLeft } from 'lucide-react';
+import {
+  Star, GitFork, Globe, Map, Shield, GitMerge, Leaf, BookOpen, Download, ArrowLeft,
+  Bookmark, BookmarkCheck, Loader2,
+} from 'lucide-react';
 import type { Report } from '@/lib/types';
 import { RepoRadarLogo } from '@/components/brand/RepoRadarLogo';
+import { authFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/use-auth';
 
 const NAV_ITEMS = [
   { href: '', label: 'Overview', icon: Globe },
@@ -19,14 +25,59 @@ export function ReportShell({
   children,
   report,
   reportId,
+  initialSaved = false,
 }: {
   children: React.ReactNode;
   report: Report | null;
   reportId: string;
+  initialSaved?: boolean;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const dataParam = searchParams.get('data');
+  const { authenticated } = useAuth();
+  const [saved, setSaved] = useState(initialSaved);
+  const [savePending, setSavePending] = useState(false);
+  const [saveNote, setSaveNote] = useState('');
+
+  useEffect(() => {
+    setSaved(initialSaved);
+  }, [initialSaved]);
+
+  async function toggleSave() {
+    setSaveNote('');
+    setSavePending(true);
+    try {
+      const res = await authFetch(`/api/reports/${reportId}/save`, { method: saved ? 'DELETE' : 'POST' });
+      if (res.ok) {
+        const data = (await res.json()) as { saved?: boolean };
+        setSaved(Boolean(data.saved));
+      } else if (res.status === 404) {
+        setSaveNote('Only saved scans can be bookmarked.');
+      } else if (res.status === 401) {
+        setSaveNote('Sign in to save reports.');
+      } else {
+        setSaveNote('Could not update bookmark.');
+      }
+    } catch {
+      setSaveNote('Could not update bookmark.');
+    } finally {
+      setSavePending(false);
+    }
+  }
+
+  function exportMarkdown() {
+    if (!report) return;
+    const blob = new Blob([report.markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${report.repo.owner}-${report.repo.name}-reporadar.md`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
 
   const basePath = `/report/${reportId}`;
 
@@ -62,10 +113,35 @@ export function ReportShell({
                 History
               </Link>
             </div>
-            <button className="inline-flex items-center gap-2 border border-[var(--bp-line-faint)] px-3 py-1.5 bp-mono text-[11px] text-[var(--bp-ink-dim)] transition-colors hover:border-[var(--bp-line)] hover:text-[var(--bp-ink)]">
-              <Download className="h-3.5 w-3.5" strokeWidth={1.5} />
-              Export
-            </button>
+            <div className="flex items-center gap-2">
+              {saveNote && <span className="bp-mono text-[10px] text-[var(--bp-ink-dim)]">{saveNote}</span>}
+              {authenticated && (
+                <button
+                  type="button"
+                  onClick={toggleSave}
+                  disabled={savePending}
+                  className="inline-flex items-center gap-2 border border-[var(--bp-line-faint)] px-3 py-1.5 bp-mono text-[11px] text-[var(--bp-ink-dim)] transition-colors hover:border-[var(--bp-line)] hover:text-[var(--bp-ink)] disabled:opacity-50"
+                >
+                  {savePending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.5} />
+                  ) : saved ? (
+                    <BookmarkCheck className="h-3.5 w-3.5 text-[var(--bp-line)]" strokeWidth={1.5} />
+                  ) : (
+                    <Bookmark className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  )}
+                  {saved ? 'Saved' : 'Save'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={exportMarkdown}
+                disabled={!report}
+                className="inline-flex items-center gap-2 border border-[var(--bp-line-faint)] px-3 py-1.5 bp-mono text-[11px] text-[var(--bp-ink-dim)] transition-colors hover:border-[var(--bp-line)] hover:text-[var(--bp-ink)] disabled:opacity-50"
+              >
+                <Download className="h-3.5 w-3.5" strokeWidth={1.5} />
+                Export
+              </button>
+            </div>
           </div>
 
           {/* repo identity */}

@@ -1,21 +1,16 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useReportData } from '@/lib/use-report';
 import type { Report } from '@/lib/types';
 import { BookOpen, Code, Shield, GitBranch, Layers, ArrowRight } from 'lucide-react';
 
-function getReport(dataParam: string | null): Report | null {
-  if (!dataParam) return null;
-  try {
-    return JSON.parse(decodeURIComponent(dataParam)) as Report;
-  } catch {
-    return null;
-  }
-}
+// Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
 
 export default function OnboardingPage() {
+  const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report = getReport(searchParams.get('data'));
+  const report: Report | null = useReportData(params.id, searchParams.get('data')).report;
 
   if (!report) {
     return (

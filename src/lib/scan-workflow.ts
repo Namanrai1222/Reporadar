@@ -10,6 +10,8 @@ import { createPersistenceAdapter } from "./persistence";
 import { retrieveArtifacts, applySynthesis, RETRIEVAL_VERSION } from "./retrieval";
 import { assertSafeServerEnvironment, parseGitHubRepoUrl } from "./security";
 import { createQueueAdapter, createQueueJob } from "./queue";
+import { beginConcurrentJob, consumeDailyScan, dailyLimitForPlan } from "./rate-limit";
+import { createHash } from "crypto";
 
 const MODES: ScanMode[] = ["full-map", "security-lens", "onboarding"];
 const SCANNER_VERSION = "rules-v1";
@@ -50,32 +52,63 @@ export async function createScan(request: Request) {
   }
 
   const parsed = parseGitHubRepoUrl(payload.githubUrl);
-  const scan = user
-    ? await persistence.createScan({
-        userId: user.id,
-        githubUrl: parsed.url,
-        owner: parsed.owner,
-        name: parsed.name,
-        branch: payload.branch ?? "default",
-        mode: payload.mode,
-        traceId: trace.traceId,
-      })
-    : null;
+  const config = getConfig();
 
-  trace.scanId = scan?.id;
-  const queued = await queue.enqueue(createQueueJob(payload, trace.traceId, scan?.id));
-  emitTelemetry(trace, "scan.queue.enqueued", { provider: queued.provider, jobId: queued.jobId });
+  // ── Rate limiting: daily budget (by plan for users, by IP for anonymous) ──
+  if (user) {
+    const plan = await persistence.getUserPlan(user.id);
+    const limit = dailyLimitForPlan(plan);
+    const daily = await consumeDailyScan(user.id, "user", limit);
+    emitTelemetry(trace, "scan.ratelimit", { kind: "user", used: daily.used, limit, allowed: daily.allowed });
+    if (!daily.allowed) {
+      throw new AppError("RATE_LIMITED", `Daily scan limit reached (${limit}/day). Resets at ${daily.resetAt}.`, 429);
+    }
+  } else {
+    const fingerprint = clientFingerprint(request);
+    const limit = config.rateLimits.anonymousPerDay;
+    const daily = await consumeDailyScan(fingerprint, "anonymous", limit);
+    emitTelemetry(trace, "scan.ratelimit", { kind: "anonymous", used: daily.used, limit, allowed: daily.allowed });
+    if (!daily.allowed) {
+      throw new AppError("RATE_LIMITED", `Anonymous scan limit reached (${limit}/day). Sign in to run more.`, 429);
+    }
+  }
 
-  const report = await runScanImmediately(payload, user?.id, scan?.id, trace.traceId);
-  return {
-    report,
-    traceId: trace.traceId,
-    queued: queue.configured,
-    persisted: persistence.configured && Boolean(user),
-    stages: completedStages(),
-    productNotice:
-      "We never store your source code; only masked analysis results, metadata, and generated reports can be saved to your account.",
-  };
+  // ── Concurrency guard (authenticated users only) ──
+  const concurrency = user ? await beginConcurrentJob(user.id, config.rateLimits.maxConcurrentPerUser) : null;
+  if (concurrency && !concurrency.allowed) {
+    throw new AppError("RATE_LIMITED", "You already have a scan running. Wait for it to finish before starting another.", 429);
+  }
+
+  try {
+    const scan = user
+      ? await persistence.createScan({
+          userId: user.id,
+          githubUrl: parsed.url,
+          owner: parsed.owner,
+          name: parsed.name,
+          branch: payload.branch ?? "default",
+          mode: payload.mode,
+          traceId: trace.traceId,
+        })
+      : null;
+
+    trace.scanId = scan?.id;
+    const queued = await queue.enqueue(createQueueJob(payload, trace.traceId, scan?.id));
+    emitTelemetry(trace, "scan.queue.enqueued", { provider: queued.provider, jobId: queued.jobId });
+
+    const report = await runScanImmediately(payload, user?.id, scan?.id, trace.traceId);
+    return {
+      report,
+      traceId: trace.traceId,
+      queued: queue.configured,
+      persisted: persistence.configured && Boolean(user),
+      stages: completedStages(),
+      productNotice:
+        "We never store your source code; only masked analysis results, metadata, and generated reports can be saved to your account.",
+    };
+  } finally {
+    await concurrency?.release();
+  }
 }
 
 async function runScanImmediately(payload: ScanRequest, userId?: string, scanId?: string, traceId?: string): Promise<Report> {
@@ -145,6 +178,13 @@ async function runScanImmediately(payload: ScanRequest, userId?: string, scanId?
     }
     throw error;
   }
+}
+
+/** Stable, non-identifying per-visitor key for anonymous rate limiting (hashed IP). */
+function clientFingerprint(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for") ?? "";
+  const ip = forwarded.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
+  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
 }
 
 export function sanitizeScanPayload(payload: Partial<ScanRequest>): ScanRequest {

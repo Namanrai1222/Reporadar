@@ -7,7 +7,7 @@
  * server-side verification in `src/lib/auth.ts`.
  */
 
-const TOKEN_KEY = 'reporadar.access_token';
+export const TOKEN_KEY = 'reporadar.access_token';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -92,4 +92,56 @@ export function signInWithGitHub(redirectPath = '/dashboard'): void {
   const redirectTo = `${window.location.origin}${redirectPath}`;
   window.location.href =
     `${SUPABASE_URL}/auth/v1/authorize?provider=github&redirect_to=${encodeURIComponent(redirectTo)}`;
+}
+
+interface JwtPayload {
+  email?: string;
+  exp?: number;
+}
+
+/** Decode a JWT payload for display only (this is NOT a signature verification). */
+function decodeJwtPayload(token: string): JwtPayload | null {
+  const part = token.split('.')[1];
+  if (!part) return null;
+  try {
+    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64)) as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+/** Current session derived from the stored token, or null when absent/expired. */
+export function getSession(): { token: string; email?: string } | null {
+  const token = getAccessToken();
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  if (payload?.exp && payload.exp * 1000 <= Date.now()) {
+    clearSession();
+    return null;
+  }
+  return { token, email: payload?.email };
+}
+
+/**
+ * Capture a Supabase OAuth redirect. After GitHub sign-in the browser lands on
+ * `<redirect>#access_token=...`; GoTrue returns the token in the URL hash. Store it
+ * and strip the hash. Returns true when a token was captured.
+ */
+export function captureOAuthRedirect(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hash = window.location.hash;
+  if (!hash || !hash.includes('access_token=')) return false;
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const token = params.get('access_token');
+  if (!token) return false;
+  storeToken(token);
+  window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  return true;
+}
+
+/** Clear the session and redirect. */
+export function signOut(redirectTo = '/'): void {
+  clearSession();
+  if (typeof window !== 'undefined') window.location.href = redirectTo;
 }

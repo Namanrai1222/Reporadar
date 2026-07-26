@@ -1,19 +1,13 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useReportData } from '@/lib/use-report';
 import { useState } from 'react';
 import type { Finding, Report, Severity } from '@/lib/types';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { ChevronDown, ChevronUp, X, FileCode, AlertTriangle, CheckCircle, Eye } from 'lucide-react';
 
-function getReport(dataParam: string | null): Report | null {
-  if (!dataParam) return null;
-  try {
-    return JSON.parse(decodeURIComponent(dataParam)) as Report;
-  } catch {
-    return null;
-  }
-}
+// Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
 
 const SEVERITY_FILTERS: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 const CATEGORY_LABELS: Record<Finding['category'], string> = {
@@ -31,8 +25,9 @@ const CATEGORY_LABELS: Record<Finding['category'], string> = {
 };
 
 export default function FindingsPage() {
+  const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report = getReport(searchParams.get('data'));
+  const report: Report | null = useReportData(params.id, searchParams.get('data')).report;
 
   const [severityFilter, setSeverityFilter] = useState<Set<Severity>>(new Set());
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);

@@ -1,19 +1,13 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useReportData } from '@/lib/use-report';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Report, CodeNode } from '@/lib/types';
 import { X, FileCode, Globe, Database, Link2, Server, Leaf, Map as MapIcon } from 'lucide-react';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 
-function getReport(dataParam: string | null): Report | null {
-  if (!dataParam) return null;
-  try {
-    return JSON.parse(decodeURIComponent(dataParam)) as Report;
-  } catch {
-    return null;
-  }
-}
+// Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
 
 const NODE_TYPE_CONFIG: Record<CodeNode['type'], { label: string; color: string; icon: typeof FileCode }> = {
   client_page: { label: 'Client Page', color: '#b9a8ff', icon: Globe },
@@ -70,8 +64,9 @@ function buildLayout(nodes: CodeNode[]): GraphNode[] {
 }
 
 export default function CodeMapPage() {
+  const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report = getReport(searchParams.get('data'));
+  const report: Report | null = useReportData(params.id, searchParams.get('data')).report;
   const svgRef = useRef<SVGSVGElement>(null);
 
   const [selectedNode, setSelectedNode] = useState<CodeNode | null>(null);

@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Radar, GitBranch, ArrowRight, Lock, Map, BookOpen, Shield, Sparkles,
-  Clock, Star, GitFork, Key, Link2, Leaf, FileText, AlertTriangle,
+  Clock, Key, Link2, Leaf, FileText, AlertTriangle,
 } from 'lucide-react';
 import { GlobalRail } from '@/components/ui/GlobalRail';
+import { authFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/use-auth';
 
 const SCAN_MODES = [
   {
@@ -41,11 +43,14 @@ const EXAMPLE_REPOS = [
   'https://github.com/shadcn-ui/ui',
 ];
 
-const RECENT_SCANS = [
-  { name: 'vercel/next.js', mode: 'full-map', time: '2 hours ago', stars: 128000, forks: 27000, findings: 3 },
-  { name: 'supabase/supabase', mode: 'security-lens', time: '1 day ago', stars: 72000, forks: 6800, findings: 7 },
-  { name: 'shadcn-ui/ui', mode: 'onboarding', time: '3 days ago', stars: 74000, forks: 4500, findings: 1 },
-];
+interface RecentScan {
+  id: string;
+  name: string;
+  mode: string;
+  time: string;
+  reportId: string | null;
+  url: string;
+}
 
 const DETECTS = [
   { icon: Key, text: 'Leaked secrets & API keys' },
@@ -63,6 +68,49 @@ export default function HomePage() {
   const [mode, setMode] = useState<'full-map' | 'security-lens' | 'onboarding'>('full-map');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { ready, authenticated } = useAuth();
+  const [recent, setRecent] = useState<RecentScan[]>([]);
+
+  useEffect(() => {
+    if (!ready || !authenticated) {
+      setRecent([]);
+      return;
+    }
+    let active = true;
+    authFetch('/api/scans')
+      .then((res) => (res.ok ? res.json() : { scans: [] }))
+      .then(
+        (data: {
+          scans?: Array<{
+            id: string;
+            repo_owner: string;
+            repo_name: string;
+            mode: string;
+            created_at: string;
+            github_url: string;
+            report_id?: string | null;
+          }>;
+        }) => {
+          if (!active) return;
+          setRecent(
+            (data.scans ?? []).slice(0, 4).map((s) => ({
+              id: s.id,
+              name: `${s.repo_owner}/${s.repo_name}`,
+              mode: s.mode,
+              time: new Date(s.created_at).toLocaleDateString(),
+              reportId: s.report_id ?? null,
+              url: s.github_url,
+            })),
+          );
+        },
+      )
+      .catch(() => {
+        if (active) setRecent([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [ready, authenticated]);
 
   async function handleScan(url?: string) {
     const targetUrl = url || githubUrl;
@@ -73,7 +121,7 @@ export default function HomePage() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/scans', {
+      const res = await authFetch('/api/scans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ githubUrl: targetUrl, branch: branch || undefined, mode }),
@@ -247,31 +295,29 @@ export default function HomePage() {
               Recent scans
             </p>
             <div className="flex flex-col gap-2">
-              {RECENT_SCANS.map((scan) => (
-                <button
-                  key={scan.name}
-                  onClick={() => setGithubUrl(`https://github.com/${scan.name}`)}
-                  className="group border border-[var(--bp-line-faint)] p-3 text-left transition-colors hover:border-[var(--bp-line-soft)]"
-                >
-                  <p className="truncate bp-mono text-[12.5px] text-[var(--bp-ink)] transition-colors group-hover:text-[var(--bp-line)]">
-                    {scan.name}
-                  </p>
-                  <div className="mt-1.5 flex items-center gap-3 bp-mono text-[10.5px] text-[var(--bp-ink-dim)]">
-                    <span className="flex items-center gap-1">
-                      <Star className="h-2.5 w-2.5" strokeWidth={1.5} />
-                      {(scan.stars / 1000).toFixed(0)}k
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <GitFork className="h-2.5 w-2.5" strokeWidth={1.5} />
-                      {(scan.forks / 1000).toFixed(1)}k
-                    </span>
-                    <span style={{ color: 'var(--bp-alert)' }}>{scan.findings} findings</span>
-                  </div>
-                  <p className="mt-1 bp-mono text-[10px] text-[color-mix(in_oklab,var(--bp-ink-dim)_65%,transparent)]">
-                    {scan.time}
-                  </p>
-                </button>
-              ))}
+              {recent.length === 0 ? (
+                <p className="bp-mono text-[11px] leading-relaxed text-[var(--bp-ink-dim)]">
+                  {authenticated
+                    ? 'No scans yet. Run one to build your history.'
+                    : 'Sign in to keep a history of your scans.'}
+                </p>
+              ) : (
+                recent.map((scan) => (
+                  <button
+                    key={scan.id}
+                    onClick={() => (scan.reportId ? router.push(`/report/${scan.reportId}`) : setGithubUrl(scan.url))}
+                    className="group border border-[var(--bp-line-faint)] p-3 text-left transition-colors hover:border-[var(--bp-line-soft)]"
+                  >
+                    <p className="truncate bp-mono text-[12.5px] text-[var(--bp-ink)] transition-colors group-hover:text-[var(--bp-line)]">
+                      {scan.name}
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-3 bp-mono text-[10.5px] text-[var(--bp-ink-dim)]">
+                      <span>{scan.mode}</span>
+                      <span className="text-[color-mix(in_oklab,var(--bp-ink-dim)_65%,transparent)]">{scan.time}</span>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
 
             <div className="mt-6 border-t border-[var(--bp-line-faint)] pt-5">

@@ -1,19 +1,11 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import type { Report, Severity } from '@/lib/types';
-import { ArrowRight, AlertTriangle, Info, Cpu, Database, Lock } from 'lucide-react';
-
-function getReport(dataParam: string | null): Report | null {
-  if (!dataParam) return null;
-  try {
-    return JSON.parse(decodeURIComponent(dataParam)) as Report;
-  } catch {
-    return null;
-  }
-}
+import { ArrowRight, AlertTriangle, Info, Cpu, Database, Lock, Loader2 } from 'lucide-react';
+import { useReportData } from '@/lib/use-report';
 
 const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
@@ -107,9 +99,11 @@ function StackBadges({ stack }: { stack: string[] }) {
 }
 
 export default function ReportOverviewPage() {
+  const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const report = getReport(searchParams.get('data'));
+  const { report, loading } = useReportData(params.id, searchParams.get('data'));
 
+  if (loading) return <ReportLoading />;
   if (!report) return <NoReport />;
 
   const topFindings = report.findings.slice(0, 5);
@@ -167,6 +161,15 @@ export default function ReportOverviewPage() {
         RepoRadar provides static analysis and AI-assisted explanations. Findings may include false positives and should
         be reviewed by a developer.
       </div>
+    </div>
+  );
+}
+
+export function ReportLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <Loader2 className="mb-4 h-7 w-7 animate-spin text-[var(--bp-line)]" strokeWidth={1.5} />
+      <p className="bp-mono text-[12px] text-[var(--bp-ink-dim)]">Loading report…</p>
     </div>
   );
 }

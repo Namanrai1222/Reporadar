@@ -3,9 +3,9 @@
 import { Suspense, use } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ReportShell } from '@/components/ui/ReportShell';
-import type { Report } from '@/lib/types';
+import { useReportData } from '@/lib/use-report';
 
-// Client component that reads search params
+// Client component that resolves the report (inline ?data= or fetched by id).
 function ReportLayoutContent({
   children,
   reportId,
@@ -14,19 +14,10 @@ function ReportLayoutContent({
   reportId: string;
 }) {
   const searchParams = useSearchParams();
-  let report: Report | null = null;
-
-  const dataParam = searchParams.get('data');
-  if (dataParam) {
-    try {
-      report = JSON.parse(decodeURIComponent(dataParam)) as Report;
-    } catch {
-      report = null;
-    }
-  }
+  const { report, saved } = useReportData(reportId, searchParams.get('data'));
 
   return (
-    <ReportShell report={report} reportId={reportId}>
+    <ReportShell report={report} reportId={reportId} initialSaved={saved}>
       {children}
     </ReportShell>
   );

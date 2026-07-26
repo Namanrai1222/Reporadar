@@ -61,22 +61,46 @@ RepoRadar never persists:
 
 ## LLM Providers
 
-Provider priority:
+`src/lib/llm.ts` builds an ordered fallback chain per request and tries each entry
+until one succeeds:
 
-1. Groq
-2. OpenRouter
-3. Ollama
-4. Mock deterministic synthesis
+1. Groq — every configured key is its own attempt (round-robin, rotated per request)
+2. OpenRouter — same key-pool behavior
+3. Ollama (if `OLLAMA_BASE_URL` set)
+4. Mock deterministic synthesis (never throws — a scan always returns)
+
+A `429` or any failure advances to the next key/provider. A process-level semaphore
+(`LLM_CONCURRENCY`, default 4) throttles concurrent synthesis calls. Provide pools via
+`GROQ_API_KEYS` / `OPENROUTER_API_KEYS` (comma-separated).
 
 LLM output is appended as synthesis only. Scanner findings, severity, confidence, and evidence remain deterministic.
 
+## Rate Limiting
+
+`src/lib/rate-limit.ts` enforces per-day scan budgets and per-user concurrency, backed by
+Redis REST when configured (limits hold across instances) or an in-memory store locally.
+
+- Anonymous: `ANONYMOUS_SCANS_PER_DAY` (default 3), keyed by hashed IP.
+- Authenticated: by `users.plan_tier` — `FREE_TIER_SCANS_PER_DAY` (5) / `PRO_TIER_SCANS_PER_DAY` (100).
+- Concurrency: `MAX_CONCURRENT_SCANS_PER_USER` (default 1).
+
+Over-limit requests return `429` with code `RATE_LIMITED`.
+
+## Row Ownership (honest note)
+
+Persistence uses the **service-role key**, which bypasses RLS. Ownership is therefore
+enforced in application code via `user_id=eq.` filters plus a `requireUserId` guard.
+The RLS policies in `schema.sql` remain as defense-in-depth.
+
 ## API Surface
 
-- `POST /api/scans`: create and run a scan
-- `GET /api/scans`: list authenticated scan history
-- `GET /api/reports/:id`: read an owned persisted report
+- `POST /api/scans`: create and run a scan (rate-limited)
+- `GET /api/scans`: list authenticated scan history (includes related `report_id`)
+- `GET /api/reports/:id`: read an owned persisted report (returns `{ report, saved }`)
 - `POST /api/reports/:id/export`: download owned report Markdown
+- `POST` / `DELETE /api/reports/:id/save`: bookmark / un-bookmark a report
+- `GET /api/saved-reports`: list the caller's bookmarked reports
 - `GET /api/health`: check configured backend providers
 
-Machine-readable errors include `AUTH_REQUIRED`, `SERVER_NOT_CONFIGURED`, `INVALID_REPOSITORY_URL`, `DATABASE_ERROR`, and `INTERNAL_ERROR`.
+Machine-readable errors include `AUTH_REQUIRED`, `RATE_LIMITED`, `SERVER_NOT_CONFIGURED`, `INVALID_REPOSITORY_URL`, `NOT_FOUND`, `DATABASE_ERROR`, and `INTERNAL_ERROR`.
 
