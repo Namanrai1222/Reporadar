@@ -1,193 +1,170 @@
 'use client';
 
 /**
- * Browser-side auth against Supabase's GoTrue REST API.
- * The access token is kept in localStorage and sent as a Bearer
- * header by API callers (see `getAccessToken`), matching the
- * server-side verification in `src/lib/auth.ts`.
+ * Browser-side auth.
+ *
+ * The browser holds no tokens. Credentials are posted to our own `/api/auth/*`
+ * routes, which talk to Supabase server-side and return the session as `HttpOnly`
+ * cookies — unreadable by script, so an injected script cannot steal a session.
+ *
+ * Consequently there is no synchronous "am I signed in?" check any more: session
+ * state comes from `fetchSession()`.
  */
-
-export const TOKEN_KEY = 'reporadar.access_token';
-const REFRESH_TOKEN_KEY = 'reporadar.refresh_token';
-
-/** Fail auth requests instead of hanging forever if GoTrue is unreachable. */
-const AUTH_TIMEOUT_MS = 15000;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+/** Fired whenever the session may have changed, so `useAuth` can re-read it. */
+export const SESSION_EVENT = 'reporadar:session';
+
+export function notifySessionChange(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_EVENT));
+}
 
 export function isAuthConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
 
-export function getAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+export interface SessionState {
+  authenticated: boolean;
+  email?: string;
 }
 
-function getRefreshToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+interface ApiError {
+  error?: string;
+  code?: string;
 }
 
-export function clearSession(): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
-}
-
-function storeToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
-}
-
-/** Persist tokens from a GoTrue response; refresh token enables session renewal. */
-function storeSession(data: { access_token?: string; refresh_token?: string }): boolean {
-  if (!data.access_token) return false;
-  storeToken(data.access_token);
-  if (data.refresh_token) window.localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
-  return true;
-}
-
-interface GoTrueError {
-  error_description?: string;
-  msg?: string;
-  message?: string;
-}
-
-async function readError(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as GoTrueError;
-    return body.error_description || body.msg || body.message || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-async function authRequest(path: string, body: Record<string, string>, fallbackError: string) {
-  if (!isAuthConfigured()) {
-    throw new Error(
-      'Authentication is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your environment.',
-    );
-  }
-
+async function postAuth<T>(path: string, body?: unknown, fallbackError = 'Request failed.'): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${SUPABASE_URL}${path}`, {
+    res = await fetch(path, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY as string,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'TimeoutError') {
-      throw new Error('The authentication server took too long to respond. Please try again.');
-    }
-    throw new Error('Could not reach the authentication server. Check your connection and try again.');
+  } catch {
+    // Same-origin now, so this only fires when the app itself is unreachable.
+    throw new Error('Could not reach the server. Check your connection and try again.');
   }
 
-  if (!res.ok) throw new Error(await readError(res, fallbackError));
-  return (await res.json()) as { access_token?: string; refresh_token?: string };
+  const data = (await res.json().catch(() => ({}))) as T & ApiError;
+  if (!res.ok) throw new Error(data.error || fallbackError);
+  return data;
 }
 
 export async function signIn(email: string, password: string): Promise<void> {
-  const data = await authRequest(
-    '/auth/v1/token?grant_type=password',
-    { email, password },
-    'Could not sign in. Check your email and password.',
-  );
-  storeSession(data);
+  await postAuth('/api/auth/signin', { email, password }, 'Could not sign in. Check your email and password.');
+  notifySessionChange();
 }
 
 /** Returns true when the account is active immediately, false when email confirmation is pending. */
 export async function signUp(email: string, password: string): Promise<boolean> {
-  const data = await authRequest('/auth/v1/signup', { email, password }, 'Could not create the account.');
-  return storeSession(data);
+  const data = await postAuth<{ authenticated?: boolean }>(
+    '/api/auth/signup',
+    { email, password },
+    'Could not create the account.',
+  );
+  notifySessionChange();
+  return Boolean(data.authenticated);
 }
 
-/**
- * Exchange the stored refresh token for a fresh access token. Call this when a
- * request 401s or the access token is near expiry. Returns false (and clears the
- * session) when no valid refresh token is available.
- */
-export async function refreshSession(): Promise<boolean> {
-  const refresh_token = getRefreshToken();
-  if (!refresh_token) return false;
+/** Read the current session from the server. */
+export async function fetchSession(): Promise<SessionState> {
   try {
-    const data = await authRequest(
-      '/auth/v1/token?grant_type=refresh_token',
-      { refresh_token },
-      'Session expired. Please sign in again.',
-    );
-    return storeSession(data);
+    const res = await fetch('/api/auth/session', { credentials: 'same-origin', cache: 'no-store' });
+    if (!res.ok) return { authenticated: false };
+    return (await res.json()) as SessionState;
   } catch {
-    clearSession();
+    return { authenticated: false };
+  }
+}
+
+/** Exchange the refresh cookie for a new access token. Returns false when the session is over. */
+export async function refreshSession(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' });
+    return res.ok;
+  } catch {
     return false;
   }
 }
 
-/** Redirects the browser to the GitHub OAuth consent screen. */
-export function signInWithGitHub(redirectPath = '/dashboard'): void {
+export type OAuthProvider = 'github' | 'google';
+
+/**
+ * Redirect the browser to a provider's OAuth consent screen via Supabase GoTrue.
+ * On return, `captureOAuthRedirect()` re-homes the fragment tokens into cookies —
+ * so the flow is identical for every provider.
+ *
+ * Note: each provider must also be enabled in the Supabase project's Auth settings
+ * (client id/secret configured there); this only starts the handshake.
+ */
+function startOAuth(provider: OAuthProvider, redirectPath: string): void {
   if (!isAuthConfigured()) {
     throw new Error('Authentication is not configured.');
   }
   const redirectTo = `${window.location.origin}${redirectPath}`;
   window.location.href =
-    `${SUPABASE_URL}/auth/v1/authorize?provider=github&redirect_to=${encodeURIComponent(redirectTo)}`;
+    `${SUPABASE_URL}/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(redirectTo)}`;
 }
 
-interface JwtPayload {
-  email?: string;
-  exp?: number;
+/** Redirects the browser to the GitHub OAuth consent screen. */
+export function signInWithGitHub(redirectPath = '/dashboard'): void {
+  startOAuth('github', redirectPath);
 }
 
-/** Decode a JWT payload for display only (this is NOT a signature verification). */
-function decodeJwtPayload(token: string): JwtPayload | null {
-  const part = token.split('.')[1];
-  if (!part) return null;
-  try {
-    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(base64)) as JwtPayload;
-  } catch {
-    return null;
-  }
-}
-
-/** Current session derived from the stored token, or null when absent/expired. */
-export function getSession(): { token: string; email?: string } | null {
-  const token = getAccessToken();
-  if (!token) return null;
-  const payload = decodeJwtPayload(token);
-  if (payload?.exp && payload.exp * 1000 <= Date.now()) {
-    // Access token expired — drop it but keep the refresh token so
-    // refreshSession() can still recover the session on the next request.
-    if (typeof window !== 'undefined') window.localStorage.removeItem(TOKEN_KEY);
-    return null;
-  }
-  return { token, email: payload?.email };
+/** Redirects the browser to the Google OAuth consent screen. */
+export function signInWithGoogle(redirectPath = '/dashboard'): void {
+  startOAuth('google', redirectPath);
 }
 
 /**
- * Capture a Supabase OAuth redirect. After GitHub sign-in the browser lands on
- * `<redirect>#access_token=...`; GoTrue returns the token in the URL hash. Store it
- * and strip the hash. Returns true when a token was captured.
+ * Capture a Supabase OAuth redirect.
+ *
+ * After GitHub sign-in the browser lands on `<redirect>#access_token=...`. The
+ * fragment never reaches the server, so it is posted to `/api/auth/session`, which
+ * verifies it and re-homes it into `HttpOnly` cookies. The fragment is then wiped
+ * from the URL so the token does not linger in browser history.
+ *
+ * Returns true when a session was established.
  */
-export function captureOAuthRedirect(): boolean {
+export async function captureOAuthRedirect(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
+
   const hash = window.location.hash;
   if (!hash || !hash.includes('access_token=')) return false;
+
   const params = new URLSearchParams(hash.replace(/^#/, ''));
-  const token = params.get('access_token');
-  if (!token) return false;
-  storeSession({ access_token: token, refresh_token: params.get('refresh_token') ?? undefined });
+  const access_token = params.get('access_token');
+  if (!access_token) return false;
+
+  // Strip the fragment first, so the token leaves the address bar even if the
+  // exchange below fails.
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
-  return true;
+
+  const expires = Number(params.get('expires_in'));
+  try {
+    await postAuth('/api/auth/session', {
+      access_token,
+      refresh_token: params.get('refresh_token') ?? undefined,
+      expires_in: Number.isFinite(expires) && expires > 0 ? expires : undefined,
+    });
+    notifySessionChange();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-/** Clear the session and redirect. */
-export function signOut(redirectTo = '/'): void {
-  clearSession();
+/** Clear the session server-side, then redirect. */
+export async function signOut(redirectTo = '/'): Promise<void> {
+  try {
+    await fetch('/api/auth/signout', { method: 'POST', credentials: 'same-origin' });
+  } catch {
+    /* fall through to the redirect regardless */
+  }
+  notifySessionChange();
   if (typeof window !== 'undefined') window.location.href = redirectTo;
 }

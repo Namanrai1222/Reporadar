@@ -2,12 +2,14 @@ import { createScan } from "@/lib/scan-workflow";
 import { createPersistenceAdapter } from "@/lib/persistence";
 import { getUserFromRequest } from "@/lib/auth";
 import { errorResponse, jsonResponse } from "@/lib/api-response";
+import { assertSameOrigin } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
     const result = await createScan(request);
     return jsonResponse(result);
   } catch (error) {

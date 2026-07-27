@@ -1,16 +1,15 @@
 'use client';
 
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useReportData } from '@/lib/use-report';
 import type { Report } from '@/lib/types';
 import { BookOpen, Code, Shield, GitBranch, Layers, ArrowRight } from 'lucide-react';
 
-// Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
+// Report is always fetched by id; contents never travel in the URL.
 
 export default function OnboardingPage() {
   const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const reportData = useReportData(params.id, searchParams.get('data'));
+  const reportData = useReportData(params.id);
   const report: Report | null = reportData.report;
 
   if (reportData.loading) {

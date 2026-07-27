@@ -73,8 +73,11 @@ export function buildReport(repo: RepoIdentity, files: RepoFile[], mode: ScanMod
   };
 }
 
+/** Stable id for the seeded demo report, so `/report/demo` is fetchable without a database row. */
+export const DEMO_REPORT_ID = "demo";
+
 export function demoReport(): Report {
-  return buildReport(
+  const report = buildReport(
     {
       owner: "reporadar-demo",
       name: "intentionally-vulnerable-storefront",
@@ -89,6 +92,10 @@ export function demoReport(): Report {
     "security-lens",
     124,
   );
+
+  // Override the generated timestamp id: the demo is never persisted, so its URL
+  // has to be a constant the report route can recognise and re-derive on demand.
+  return { ...report, id: DEMO_REPORT_ID };
 }
 
 export function toMarkdown(report: Report) {

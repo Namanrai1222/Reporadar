@@ -4,8 +4,8 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, MailCheck } from 'lucide-react';
-import { AuthShell, Field, FormError, SubmitButton, GitHubIcon } from '@/components/auth/AuthShell';
-import { signUp, signInWithGitHub } from '@/lib/auth-client';
+import { AuthShell, Field, FormError, SubmitButton, OAuthButtons } from '@/components/auth/AuthShell';
+import { signUp } from '@/lib/auth-client';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -44,14 +44,6 @@ export default function SignUpPage() {
     }
   }
 
-  function handleGitHub() {
-    try {
-      signInWithGitHub('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start GitHub sign-up.');
-    }
-  }
-
   if (confirmSent) {
     return (
       <AuthShell
@@ -86,14 +78,7 @@ export default function SignUpPage() {
       footer="Static analysis only · Source code is never stored."
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <button
-          type="button"
-          onClick={handleGitHub}
-          className="flex w-full items-center justify-center gap-2.5 border border-[var(--bp-line-faint)] px-6 py-3 bp-mono text-[12.5px] tracking-wide text-[var(--bp-ink)] transition-colors hover:border-[var(--bp-line)]"
-        >
-          <GitHubIcon />
-          Continue with GitHub
-        </button>
+        <OAuthButtons onError={setError} />
 
         <div className="flex items-center gap-3 py-1">
           <span className="h-px flex-1 bg-[var(--bp-line-faint)]" />

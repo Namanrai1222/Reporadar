@@ -1,11 +1,10 @@
 'use client';
 
 import { Suspense, use } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { ReportShell } from '@/components/ui/ReportShell';
 import { useReportData } from '@/lib/use-report';
 
-// Client component that resolves the report (inline ?data= or fetched by id).
+// Client component that resolves the report by id (contents never travel in the URL).
 function ReportLayoutContent({
   children,
   reportId,
@@ -13,8 +12,7 @@ function ReportLayoutContent({
   children: React.ReactNode;
   reportId: string;
 }) {
-  const searchParams = useSearchParams();
-  const { report, saved } = useReportData(reportId, searchParams.get('data'));
+  const { report, saved } = useReportData(reportId);
 
   return (
     <ReportShell report={report} reportId={reportId} initialSaved={saved}>

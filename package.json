@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:unit": "PW_NO_SERVER=1 playwright test --project=unit",
+    "test:security": "playwright test --project=api"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

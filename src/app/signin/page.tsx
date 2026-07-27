@@ -4,8 +4,8 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
-import { AuthShell, Field, FormError, SubmitButton, GitHubIcon } from '@/components/auth/AuthShell';
-import { signIn, signInWithGitHub } from '@/lib/auth-client';
+import { AuthShell, Field, FormError, SubmitButton, OAuthButtons } from '@/components/auth/AuthShell';
+import { signIn } from '@/lib/auth-client';
 
 export default function SignInPage() {
   const router = useRouter();
@@ -27,14 +27,6 @@ export default function SignInPage() {
     }
   }
 
-  function handleGitHub() {
-    try {
-      signInWithGitHub('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start GitHub sign-in.');
-    }
-  }
-
   return (
     <AuthShell
       sheet="SHEET 00 — ACCESS"
@@ -43,14 +35,7 @@ export default function SignInPage() {
       footer="Static analysis only · Source code is never stored."
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <button
-          type="button"
-          onClick={handleGitHub}
-          className="flex w-full items-center justify-center gap-2.5 border border-[var(--bp-line-faint)] px-6 py-3 bp-mono text-[12.5px] tracking-wide text-[var(--bp-ink)] transition-colors hover:border-[var(--bp-line)]"
-        >
-          <GitHubIcon />
-          Continue with GitHub
-        </button>
+        <OAuthButtons onError={setError} />
 
         <div className="flex items-center gap-3 py-1">
           <span className="h-px flex-1 bg-[var(--bp-line-faint)]" />
@@ -93,8 +78,11 @@ export default function SignInPage() {
             Create one
           </Link>
           {' · '}
-          <Link href="/dashboard" className="text-[var(--bp-ink-dim)] underline-offset-4 hover:text-[var(--bp-ink)] hover:underline">
-            Continue without an account
+          {/* Scanning a real repository requires an account (the server rejects
+              anonymous scans), so this offers the seeded demo instead of a
+              dashboard that would only produce a 401. */}
+          <Link href="/report/demo" className="text-[var(--bp-ink-dim)] underline-offset-4 hover:text-[var(--bp-ink)] hover:underline">
+            View a sample report
           </Link>
         </p>
       </form>

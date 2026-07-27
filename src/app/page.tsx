@@ -383,7 +383,7 @@ function Metrics() {
 /* ============================================================ How it works */
 function HowItWorks() {
   const steps = [
-    { num: '01', title: 'Paste a URL', desc: 'Any public GitHub repository. No install, no account.', icon: Link2 },
+    { num: '01', title: 'Paste a URL', desc: 'Any public GitHub repository. No install required.', icon: Link2 },
     { num: '02', title: 'Choose a lens', desc: 'Full map, security deep-dive, or onboarding synthesis.', icon: MapIcon },
     { num: '03', title: 'Explore', desc: 'Navigate the map, filter findings, export the report.', icon: ArrowUpRight },
   ];
@@ -575,7 +575,7 @@ function CTA() {
         </Reveal>
         <Reveal delay={0.1}>
           <p className="mx-auto mt-5 max-w-md text-[15.5px] text-[var(--bp-ink-dim)]">
-            No account. No installation. Public repositories only.
+            No installation. Public repositories only. Free account required to scan.
           </p>
         </Reveal>
         <Reveal delay={0.16}>
