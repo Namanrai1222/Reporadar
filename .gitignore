@@ -43,3 +43,12 @@ next-env.d.ts
 # local typecheck scratch configs (not part of the app build)
 /tsconfig.check.json
 /tsconfig.lib.json
+/tsconfig.routes.json
+/tsconfig.authroutes.json
+/tsconfig.ui.json
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

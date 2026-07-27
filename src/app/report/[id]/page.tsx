@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import type { Report, Severity } from '@/lib/types';
@@ -100,8 +100,7 @@ function StackBadges({ stack }: { stack: string[] }) {
 
 export default function ReportOverviewPage() {
   const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const { report, loading } = useReportData(params.id, searchParams.get('data'));
+  const { report, loading } = useReportData(params.id);
 
   if (loading) return <ReportLoading />;
   if (!report) return <NoReport />;

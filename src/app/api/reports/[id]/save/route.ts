@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { errorResponse, jsonResponse } from "@/lib/api-response";
 import { createPersistenceAdapter } from "@/lib/persistence";
+import { assertSameOrigin } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 /** Bookmark a report the caller owns. */
 export async function POST(request: Request, context: RouteContext<"/api/reports/[id]/save">) {
   try {
+    assertSameOrigin(request);
     const user = await requireUser(request);
     const { id } = await context.params;
     const persistence = createPersistenceAdapter();
@@ -28,6 +30,7 @@ export async function POST(request: Request, context: RouteContext<"/api/reports
 /** Remove a report bookmark. */
 export async function DELETE(request: Request, context: RouteContext<"/api/reports/[id]/save">) {
   try {
+    assertSameOrigin(request);
     const user = await requireUser(request);
     const { id } = await context.params;
     await createPersistenceAdapter().removeReportBookmark(user.id, id);

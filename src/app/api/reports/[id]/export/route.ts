@@ -2,12 +2,14 @@ import { requireUser } from "@/lib/auth";
 import { errorResponse } from "@/lib/api-response";
 import { createPersistenceAdapter } from "@/lib/persistence";
 import { securityHeaders } from "@/lib/security";
+import { assertSameOrigin } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, context: RouteContext<"/api/reports/[id]/export">) {
   try {
+    assertSameOrigin(request);
     const user = await requireUser(request);
     const { id } = await context.params;
     const report = await createPersistenceAdapter().getReport(id, user.id);

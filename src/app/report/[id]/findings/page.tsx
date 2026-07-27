@@ -1,13 +1,13 @@
 'use client';
 
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useReportData } from '@/lib/use-report';
 import { useState } from 'react';
 import type { Finding, Report, Severity } from '@/lib/types';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { ChevronDown, ChevronUp, X, FileCode, AlertTriangle, CheckCircle, Eye } from 'lucide-react';
 
-// Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
+// Report is always fetched by id; contents never travel in the URL.
 
 const SEVERITY_FILTERS: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 const CATEGORY_LABELS: Record<Finding['category'], string> = {
@@ -26,8 +26,7 @@ const CATEGORY_LABELS: Record<Finding['category'], string> = {
 
 export default function FindingsPage() {
   const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const reportData = useReportData(params.id, searchParams.get('data'));
+  const reportData = useReportData(params.id);
   const report: Report | null = reportData.report;
 
   const [severityFilter, setSeverityFilter] = useState<Set<Severity>>(new Set());

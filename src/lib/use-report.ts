@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Report } from './types';
 import { authFetch } from './api-client';
 
@@ -16,7 +16,7 @@ const cache = new Map<string, Promise<{ report: Report | null; saved: boolean }>
 function load(id: string) {
   let pending = cache.get(id);
   if (!pending) {
-    pending = authFetch(`/api/reports/${id}`)
+    pending = authFetch(`/api/reports/${encodeURIComponent(id)}`)
       .then(async (res) => {
         if (!res.ok) return { report: null, saved: false };
         const data = (await res.json()) as { report?: Report; saved?: boolean };
@@ -33,26 +33,19 @@ function load(id: string) {
   return pending;
 }
 
-function parseInline(inlineData: string | null): Report | null {
-  if (!inlineData) return null;
-  try {
-    return JSON.parse(decodeURIComponent(inlineData)) as Report;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Resolve a report either from an inline `?data=` param (fresh scan) or by fetching
- * the persisted report by id (History / Saved Reports navigation).
+ * Resolve a report by id from the server.
+ *
+ * Reports are always fetched — never read from the URL. An earlier version
+ * accepted the entire report as a `?data=` parameter to save a round-trip after a
+ * fresh scan, which leaked findings and masked secrets into browser history,
+ * access logs and `Referer` headers, and let the contents be rewritten by editing
+ * the address bar.
  */
-export function useReportData(reportId: string, inlineData: string | null): ReportData {
-  // Inline data (fresh scan) resolves synchronously — derived, not stored in state.
-  const inline = useMemo(() => parseInline(inlineData), [inlineData]);
+export function useReportData(reportId: string): ReportData {
   const [fetched, setFetched] = useState<{ id: string; report: Report | null; saved: boolean } | null>(null);
 
   useEffect(() => {
-    if (inline) return; // no fetch needed for inline reports
     let active = true;
     // setState only in the async callback (never synchronously in the effect body).
     load(reportId).then((result) => {
@@ -61,9 +54,7 @@ export function useReportData(reportId: string, inlineData: string | null): Repo
     return () => {
       active = false;
     };
-  }, [reportId, inline]);
-
-  if (inline) return { report: inline, saved: false, loading: false };
+  }, [reportId]);
 
   // Only trust a fetched result that belongs to the current id; otherwise we're loading.
   const current = fetched && fetched.id === reportId ? fetched : null;

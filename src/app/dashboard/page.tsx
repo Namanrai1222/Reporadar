@@ -127,8 +127,19 @@ export default function HomePage() {
         body: JSON.stringify({ githubUrl: targetUrl, branch: branch || undefined, mode }),
       });
       const data = await res.json();
+
+      // Scanning a real repository requires an account; send the visitor to sign in
+      // rather than showing a dead-end error.
+      if (res.status === 401) {
+        router.push('/signin');
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'Scan failed.');
-      router.push(`/report/${data.report.id}?data=${encodeURIComponent(JSON.stringify(data.report))}`);
+
+      // Navigate by id only. The report is already persisted server-side, so the
+      // report page fetches it through an authorisation-checked endpoint instead of
+      // carrying findings and masked secrets through the address bar.
+      router.push(`/report/${encodeURIComponent(data.report.id)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Scan failed. Please try again.');
       setLoading(false);

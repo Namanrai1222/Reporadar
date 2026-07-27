@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   Star, GitFork, Globe, Map, Shield, GitMerge, Leaf, BookOpen, Download, ArrowLeft,
   Bookmark, BookmarkCheck, Loader2,
@@ -33,8 +33,6 @@ export function ReportShell({
   initialSaved?: boolean;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const dataParam = searchParams.get('data');
   const { authenticated } = useAuth();
   const [saved, setSaved] = useState(initialSaved);
   const [savePending, setSavePending] = useState(false);
@@ -84,10 +82,10 @@ export function ReportShell({
   const criticalCount = report?.findings.filter((f) => f.severity === 'critical').length ?? 0;
   const highCount = report?.findings.filter((f) => f.severity === 'high').length ?? 0;
 
-  function navHref(suffix: string) {
-    const base = `${basePath}${suffix}`;
-    return dataParam ? `${base}?data=${encodeURIComponent(dataParam)}` : base;
-  }
+  // Tabs are plain paths. They used to carry the report payload forward as a
+  // `?data=` parameter so each tab could render without re-fetching; every tab
+  // switch therefore wrote the full findings list into browser history.
+  const navHref = (suffix: string) => `${basePath}${suffix}`;
 
   const isActive = (suffix: string) => {
     const full = `${basePath}${suffix}`;

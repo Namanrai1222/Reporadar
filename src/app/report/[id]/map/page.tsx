@@ -1,13 +1,13 @@
 'use client';
 
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useReportData } from '@/lib/use-report';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Report, CodeNode } from '@/lib/types';
 import { X, FileCode, Globe, Database, Link2, Server, Leaf, Map as MapIcon } from 'lucide-react';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 
-// Report resolved via useReportData (inline ?data= for fresh scans, or fetched by id).
+// Report is always fetched by id; contents never travel in the URL.
 
 const NODE_TYPE_CONFIG: Record<CodeNode['type'], { label: string; color: string; icon: typeof FileCode }> = {
   client_page: { label: 'Client Page', color: '#b9a8ff', icon: Globe },
@@ -64,8 +64,7 @@ function buildLayout(nodes: CodeNode[]): GraphNode[] {
 
 export default function CodeMapPage() {
   const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const reportData = useReportData(params.id, searchParams.get('data'));
+  const reportData = useReportData(params.id);
   const report: Report | null = reportData.report;
   const svgRef = useRef<SVGSVGElement>(null);
 

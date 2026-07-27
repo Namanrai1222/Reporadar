@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { getConfig, isRedisConfigured } from "./config";
 
 /**
@@ -147,6 +148,41 @@ export async function consumeDailyScan(
   };
 }
 
+/**
+ * Consume one unit of a generic fixed-window budget.
+ *
+ * Used for brute-force protection on the auth routes, where the window is minutes
+ * rather than a calendar day. The window is keyed by `floor(now / window)` so the
+ * counter rolls over on its own without needing a scheduled reset.
+ */
+export async function consumeFixedWindow(
+  scope: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<RateDecision> {
+  const bucket = Math.floor(Date.now() / 1000 / windowSeconds);
+  const key = `rl:win:${scope}:${bucket}`;
+  const used = await getStore().increment(key, windowSeconds);
+  return {
+    allowed: used <= limit,
+    limit,
+    used,
+    remaining: Math.max(0, limit - used),
+    resetAt: new Date((bucket + 1) * windowSeconds * 1000).toISOString(),
+    scope,
+  };
+}
+
+/** Brute-force budgets for the auth routes. */
+export const AUTH_RATE_LIMITS = {
+  /** Attempts from one IP across all accounts — blunts credential stuffing. */
+  perIp: { limit: 20, windowSeconds: 15 * 60 },
+  /** Attempts against one account from anywhere — blunts targeted brute force. */
+  perAccount: { limit: 8, windowSeconds: 15 * 60 },
+  /** Account creation from one IP — blunts automated signup abuse. */
+  signupPerIp: { limit: 5, windowSeconds: 60 * 60 },
+} as const;
+
 const CONCURRENCY_TTL_SECONDS = 60 * 10; // safety valve: stuck jobs self-release after 10 min
 
 export interface ConcurrencySlot {
@@ -173,6 +209,19 @@ export async function beginConcurrentJob(userId: string, limit: number): Promise
     return { allowed: false, active, limit, release: async () => {} };
   }
   return { allowed: true, active, limit, release };
+}
+
+/**
+ * Stable, non-identifying per-visitor key derived from the client IP.
+ *
+ * Keyed with a server-side secret because an unsalted digest of an IP is only a
+ * pseudonym — the IPv4 space is small enough to exhaustively reverse.
+ */
+export function clientFingerprint(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for") ?? "";
+  const ip = forwarded.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "reporadar-local";
+  return createHmac("sha256", secret).update(ip).digest("hex").slice(0, 32);
 }
 
 /** Per-plan daily allowance. */

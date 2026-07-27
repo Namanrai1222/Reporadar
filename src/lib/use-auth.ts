@@ -1,36 +1,49 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { captureOAuthRedirect, getSession, signOut as clientSignOut, TOKEN_KEY } from './auth-client';
+import { fetchSession, signOut as clientSignOut, SESSION_EVENT } from './auth-client';
 
 export interface AuthState {
-  /** True once the client has read the stored session (avoids UI flicker/SSR mismatch). */
+  /** True once the client has resolved the session (avoids UI flicker/SSR mismatch). */
   ready: boolean;
   authenticated: boolean;
   email?: string;
 }
 
 /**
- * Client hook for auth state. Reads the token stored by auth-client, captures the
- * OAuth redirect hash on first load, and reacts to sign-in/out in other tabs.
+ * Client hook for auth state.
+ *
+ * The session cookie is `HttpOnly`, so state has to come from the server rather
+ * than a synchronous localStorage read. It is re-read when the app signals a
+ * change (`SESSION_EVENT`) and when the tab regains focus — the latter replaces
+ * the old cross-tab `storage` listener, which no longer fires now that nothing is
+ * written to localStorage.
  */
 export function useAuth() {
   const [state, setState] = useState<AuthState>({ ready: false, authenticated: false });
 
   useEffect(() => {
-    captureOAuthRedirect();
-    const apply = () => {
-      const session = getSession();
-      setState({ ready: true, authenticated: Boolean(session), email: session?.email });
+    let active = true;
+
+    const apply = async () => {
+      const session = await fetchSession();
+      if (!active) return;
+      setState({ ready: true, authenticated: session.authenticated, email: session.email });
     };
-    apply();
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key === TOKEN_KEY) apply();
+
+    void apply();
+
+    const onChange = () => void apply();
+    window.addEventListener(SESSION_EVENT, onChange);
+    window.addEventListener('focus', onChange);
+
+    return () => {
+      active = false;
+      window.removeEventListener(SESSION_EVENT, onChange);
+      window.removeEventListener('focus', onChange);
     };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const signOut = useCallback(() => clientSignOut('/'), []);
+  const signOut = useCallback(() => void clientSignOut('/'), []);
   return { ...state, signOut };
 }
