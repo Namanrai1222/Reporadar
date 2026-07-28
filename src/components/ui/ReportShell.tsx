@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -34,13 +34,14 @@ export function ReportShell({
 }) {
   const pathname = usePathname();
   const { authenticated } = useAuth();
-  const [saved, setSaved] = useState(initialSaved);
+  // `initialSaved` arrives asynchronously with the report, so it starts false
+  // and resolves later. Holding it in state meant re-syncing it from an effect;
+  // instead the local toggle is tracked on its own and only takes precedence
+  // once the user has actually clicked.
+  const [savedOverride, setSavedOverride] = useState<boolean | null>(null);
+  const saved = savedOverride ?? initialSaved;
   const [savePending, setSavePending] = useState(false);
   const [saveNote, setSaveNote] = useState('');
-
-  useEffect(() => {
-    setSaved(initialSaved);
-  }, [initialSaved]);
 
   async function toggleSave() {
     setSaveNote('');
@@ -49,7 +50,7 @@ export function ReportShell({
       const res = await authFetch(`/api/reports/${reportId}/save`, { method: saved ? 'DELETE' : 'POST' });
       if (res.ok) {
         const data = (await res.json()) as { saved?: boolean };
-        setSaved(Boolean(data.saved));
+        setSavedOverride(Boolean(data.saved));
       } else if (res.status === 404) {
         setSaveNote('Only saved scans can be bookmarked.');
       } else if (res.status === 401) {
@@ -65,7 +66,17 @@ export function ReportShell({
   }
 
   function exportMarkdown() {
-    if (!report) return;
+    // Previously a bare `return` — clicking Export before the report resolved,
+    // or for a report with no markdown, did nothing at all with no explanation.
+    if (!report) {
+      setSaveNote('The report is still loading — try again in a moment.');
+      return;
+    }
+    if (!report.markdown) {
+      setSaveNote('This report has no exportable content.');
+      return;
+    }
+    setSaveNote('');
     const blob = new Blob([report.markdown], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');

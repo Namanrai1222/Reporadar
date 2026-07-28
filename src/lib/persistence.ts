@@ -11,6 +11,8 @@ export type DbScanStatus =
   | "retrieval"
   | "llm_synthesis"
   | "completed"
+  /** Report was written, but a later step failed — the results are still readable. */
+  | "completed_with_errors"
   | "failed"
   | "cancelled";
 

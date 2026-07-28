@@ -1,5 +1,6 @@
 import type { RepoFile, RepoIdentity } from "./types";
 import { SECURITY_LIMITS, normalizeRepoPath, parseGitHubRepoUrl } from "./security";
+import { AppError } from "./config";
 
 interface GitHubTreeItem {
   path: string;
@@ -53,6 +54,13 @@ const IGNORED_PATH_PARTS = [
 
 const TEXT_EXTENSIONS = /\.(md|txt|json|js|jsx|ts|tsx|mjs|cjs|css|scss|html|py|go|rs|java|rb|php|yml|yaml|toml|env|prisma)$/i;
 
+/**
+ * How many raw file downloads run at once. Raw content comes from
+ * `raw.githubusercontent.com`, which is not subject to the REST API's hourly
+ * quota, so this is bounded for politeness and memory rather than rate limits.
+ */
+const RAW_FETCH_CONCURRENCY = 8;
+
 export async function fetchPublicGitHubRepo(githubUrl: string, requestedBranch?: string) {
   const parsed = parseGitHubRepoUrl(githubUrl);
   const repoApiUrl = `https://api.github.com/repos/${parsed.owner}/${parsed.name}`;
@@ -60,9 +68,30 @@ export async function fetchPublicGitHubRepo(githubUrl: string, requestedBranch?:
 
   if (!repoResponse.ok) {
     if (repoResponse.status === 404) {
-      throw new Error("We could not access this repository. Check the link and visibility.");
+      throw new AppError(
+        "REPO_NOT_FOUND",
+        "We could not access this repository. Check the link and that the repository is public.",
+        404,
+      );
     }
-    throw new Error("GitHub rejected the repository request. Try again shortly.");
+    // Unauthenticated GitHub API calls share a 60/hour budget across the whole
+    // server, so this is the first thing to fail under any real use. Say so
+    // plainly instead of "try again shortly" — the fix is a GITHUB_TOKEN, and
+    // the reset time is the only useful thing to wait for.
+    if (repoResponse.status === 403 || repoResponse.status === 429) {
+      const remaining = repoResponse.headers.get("x-ratelimit-remaining");
+      if (remaining === "0") {
+        const reset = Number(repoResponse.headers.get("x-ratelimit-reset"));
+        const resetsAt = Number.isFinite(reset) ? new Date(reset * 1000).toISOString() : "shortly";
+        throw new AppError(
+          "GITHUB_RATE_LIMITED",
+          `GitHub's API rate limit is exhausted (resets at ${resetsAt}). Set GITHUB_TOKEN to raise the limit from 60 to 5000 requests/hour.`,
+          503,
+        );
+      }
+      throw new AppError("GITHUB_FORBIDDEN", "GitHub refused the repository request.", 502);
+    }
+    throw new AppError("GITHUB_UNAVAILABLE", "GitHub rejected the repository request. Try again shortly.", 502);
   }
 
   const repoData = (await repoResponse.json()) as GitHubRepoResponse;
@@ -96,23 +125,40 @@ export async function fetchPublicGitHubRepo(githubUrl: string, requestedBranch?:
     .filter((item) => (item.size ?? 0) <= SECURITY_LIMITS.maxIndividualFileBytes)
     .slice(0, SECURITY_LIMITS.maxDownloadedFiles);
 
+  // Downloaded with bounded parallelism. Fetching these one at a time meant a
+  // round-trip (~0.9s) per file and up to `maxDownloadedFiles` of them, so a
+  // normal repository took over a minute in raw network wait alone — long enough
+  // that the request was routinely cut off before a response could be written,
+  // which surfaced in the browser as "Unexpected end of JSON input".
+  //
+  // The byte budget is still enforced, but it is now checked as results land
+  // rather than before each request, so the cap holds without serialising.
   const files: RepoFile[] = [];
   let totalBytes = 0;
+  let budgetExhausted = false;
 
-  for (const item of candidates) {
-    if (totalBytes >= SECURITY_LIMITS.maxTotalDownloadedBytes) {
-      break;
+  for (let i = 0; i < candidates.length; i += RAW_FETCH_CONCURRENCY) {
+    if (budgetExhausted) break;
+
+    const batch = candidates.slice(i, i + RAW_FETCH_CONCURRENCY);
+    const contents = await Promise.all(
+      batch.map((item) => fetchRawFile(parsed.owner, parsed.name, branch, item.path)),
+    );
+
+    for (const [index, content] of contents.entries()) {
+      if (totalBytes >= SECURITY_LIMITS.maxTotalDownloadedBytes) {
+        budgetExhausted = true;
+        break;
+      }
+      const size = Buffer.byteLength(content, "utf8");
+      totalBytes += size;
+      files.push({
+        path: normalizeRepoPath(batch[index].path),
+        content,
+        size,
+        language: languageForPath(batch[index].path),
+      });
     }
-
-    const content = await fetchRawFile(parsed.owner, parsed.name, branch, item.path);
-    const size = Buffer.byteLength(content, "utf8");
-    totalBytes += size;
-    files.push({
-      path: normalizeRepoPath(item.path),
-      content,
-      size,
-      language: languageForPath(item.path),
-    });
   }
 
   return {

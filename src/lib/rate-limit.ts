@@ -123,6 +123,23 @@ function nextUtcMidnightIso(date = new Date()): string {
   return next.toISOString();
 }
 
+/**
+ * "in 6h 30m" — a raw ISO timestamp in an error message makes the reader do
+ * timezone arithmetic to answer the only question they have, which is how long
+ * they have to wait.
+ */
+export function humanizeReset(resetAtIso: string, now = new Date()): string {
+  const ms = new Date(resetAtIso).getTime() - now.getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return "shortly";
+
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes < 60) return `in ${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `in ${hours}h ${remainder}m` : `in ${hours}h`;
+}
+
 const DAY_TTL_SECONDS = 60 * 60 * 26; // a little over 24h so a stamped key always outlives its day
 
 /**
@@ -146,6 +163,24 @@ export async function consumeDailyScan(
     resetAt: nextUtcMidnightIso(),
     scope,
   };
+}
+
+/**
+ * Give back a unit consumed by `consumeDailyScan`.
+ *
+ * The budget is spent up-front, because the check has to happen before any work
+ * starts. That is correct for admission control but wrong for accounting when
+ * the scan then fails for a reason the caller could not have avoided — a GitHub
+ * outage or an exhausted API quota would otherwise burn the user's whole daily
+ * allowance without ever producing a report.
+ */
+export async function refundDailyScan(subject: string, kind: "anonymous" | "user"): Promise<void> {
+  const key = `rl:day:${kind}:${subject}:${utcDayStamp()}`;
+  try {
+    await getStore().decrement(key);
+  } catch {
+    // A refund is best-effort: never turn a failed scan into a second failure.
+  }
 }
 
 /**

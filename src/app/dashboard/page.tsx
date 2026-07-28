@@ -129,15 +129,30 @@ export default function HomePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ githubUrl: targetUrl, branch: branch || undefined, mode }),
       });
-      const data = await res.json();
-
       // Scanning a real repository requires an account; send the visitor to sign in
-      // rather than showing a dead-end error.
+      // rather than showing a dead-end error. Checked before parsing, since a 401
+      // is about the request rather than its body.
       if (res.status === 401) {
         router.push('/signin');
         return;
       }
-      if (!res.ok) throw new Error(data.error || 'Scan failed.');
+
+      // A dropped or truncated response leaves an empty body, which used to
+      // surface verbatim as "Unexpected end of JSON input" — a parser message
+      // with nothing in it for the user to act on.
+      let data: { report?: { id: string }; error?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(
+          res.ok
+            ? 'The scan response was incomplete. The repository may be large — please try again.'
+            : `The scan failed (HTTP ${res.status}) and returned no details. Please try again.`,
+        );
+      }
+
+      if (!res.ok) throw new Error(data?.error || 'Scan failed.');
+      if (!data?.report?.id) throw new Error('The scan completed but returned no report.');
 
       // Navigate by id only. The report is already persisted server-side, so the
       // report page fetches it through an authorisation-checked endpoint instead of
@@ -179,6 +194,8 @@ export default function HomePage() {
             <div className="w-full">
               {/* Scanning a real repository is rejected server-side without an
                   account. Say so up front rather than after the submit. */}
+              {/* Only once the session is known — otherwise this flashes on
+                  every load for signed-in users too. */}
               {ready && !authenticated && (
                 <div className="mb-5 flex items-start gap-3 border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-line)_6%,transparent)] px-4 py-3">
                   <Lock className="mt-px h-3.5 w-3.5 shrink-0 text-[var(--bp-line)]" strokeWidth={1.5} />

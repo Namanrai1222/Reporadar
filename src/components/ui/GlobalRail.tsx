@@ -54,7 +54,16 @@ export function GlobalRail() {
         </div>
 
         <div className="border-t border-[var(--bp-line-faint)] p-3">
-          {ready && authenticated ? (
+          {!ready ? (
+            // Session state is resolved by a request, so it is unknown on the
+            // first paint. Rendering the signed-out control as a default made
+            // every navigation flash "Sign in" before correcting itself; a
+            // neutral placeholder keeps the layout stable instead.
+            <div className="px-3" aria-hidden>
+              <span className="block h-3 w-28 animate-pulse bg-[var(--bp-line-faint)]" />
+              <span className="mt-2 block h-3 w-20 animate-pulse bg-[var(--bp-line-faint)]" />
+            </div>
+          ) : authenticated ? (
             <div className="px-3">
               {email && (
                 <p className="truncate bp-mono text-[11px] text-[var(--bp-ink-dim)]" title={email}>

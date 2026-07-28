@@ -20,14 +20,28 @@ interface ScanRow {
 type View = 'loading' | 'anon' | 'empty' | 'ready' | 'error';
 
 function StatusPill({ status }: { status: string }) {
-  const color =
-    status === 'completed' ? 'var(--bp-line)' : status === 'failed' ? 'var(--bp-critical)' : 'var(--bp-ink-dim)';
+  // `completed_with_errors` still has a readable report behind it, so it reads
+  // as a warning rather than a failure — and the raw enum is not shown to users.
+  const { color, label, title } =
+    status === 'completed'
+      ? { color: 'var(--bp-line)', label: 'completed', title: undefined }
+      : status === 'completed_with_errors'
+        ? {
+            color: 'var(--bp-alert)',
+            label: 'partial',
+            title: 'The report was generated, but some steps did not finish.',
+          }
+        : status === 'failed'
+          ? { color: 'var(--bp-critical)', label: 'failed', title: undefined }
+          : { color: 'var(--bp-ink-dim)', label: status, title: undefined };
+
   return (
     <span
+      title={title}
       className="border px-1.5 py-0.5 bp-mono text-[10px] uppercase"
       style={{ color, borderColor: `color-mix(in oklab, ${color} 40%, transparent)` }}
     >
-      {status}
+      {label}
     </span>
   );
 }
@@ -39,8 +53,10 @@ export default function HistoryPage() {
 
   useEffect(() => {
     if (!ready) return;
+    // No `setView('loading')` here — that is already the initial state, and the
+    // effect only runs once `ready` flips, so writing it synchronously would
+    // just be a redundant render.
     let active = true;
-    setView('loading');
     authFetch('/api/scans')
       .then(async (res) => {
         if (!active) return;

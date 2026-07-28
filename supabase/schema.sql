@@ -10,6 +10,16 @@ create table if not exists public.users (
 -- Idempotent migration for projects created before plan_tier existed.
 alter table public.users add column if not exists plan_tier text not null default 'free';
 
+-- A scan whose report was written but whose bookkeeping then failed is not the
+-- same as one that produced nothing; without a state for it, a usable report
+-- gets reported to the user as a failure. Rebuilt rather than added so the
+-- migration lands on databases created before the state existed.
+alter table public.scans drop constraint if exists scans_status_check;
+alter table public.scans add constraint scans_status_check
+  check (status in ('queued', 'cloning', 'parsing', 'building_structure', 'security_analysis',
+                    'retrieval', 'llm_synthesis', 'completed', 'completed_with_errors',
+                    'failed', 'cancelled'));
+
 -- Ensure migrated databases get the same check constraint as fresh installs.
 do $$
 begin
@@ -28,7 +38,7 @@ create table if not exists public.scans (
   github_url text not null,
   branch text not null default 'default',
   mode text not null check (mode in ('full-map', 'security-lens', 'onboarding')),
-  status text not null check (status in ('queued', 'cloning', 'parsing', 'building_structure', 'security_analysis', 'retrieval', 'llm_synthesis', 'completed', 'failed', 'cancelled')),
+  status text not null check (status in ('queued', 'cloning', 'parsing', 'building_structure', 'security_analysis', 'retrieval', 'llm_synthesis', 'completed', 'completed_with_errors', 'failed', 'cancelled')),
   stage text not null,
   trace_id text not null,
   error_code text,
