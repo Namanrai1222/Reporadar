@@ -2,9 +2,14 @@
 
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { RepoRadarLogo } from '@/components/brand/RepoRadarLogo';
-import { signInWithGitHub, signInWithGoogle } from '@/lib/auth-client';
+import {
+  fetchEnabledProviders,
+  signInWithGitHub,
+  signInWithGoogle,
+  type OAuthProvider,
+} from '@/lib/auth-client';
 import { BlueprintSchematic } from '@/components/landing/BlueprintSchematic';
 
 // 3D isometric wireframe — same rotating plate as the landing hero,
@@ -111,12 +116,31 @@ export function GoogleIcon({ className = 'h-4 w-4' }: { className?: string }) {
 }
 
 /**
- * Social sign-in buttons shared by the sign-in and sign-up pages. Each provider
- * must be enabled in the Supabase project's Auth settings; email/password is
- * handled by the form below these.
+ * Social sign-in buttons shared by the sign-in and sign-up pages.
+ *
+ * A provider is only clickable once the server confirms it is enabled in the
+ * Supabase project. Sending the browser to `/authorize` for a provider that is
+ * not configured lands the user on a bare GoTrue JSON error with no route back
+ * into the app, so an unavailable provider is disabled and labelled instead.
  */
 export function OAuthButtons({ onError }: { onError: (message: string) => void }) {
-  const start = (fn: (path: string) => void, label: string) => {
+  const [available, setAvailable] = useState<Record<OAuthProvider, boolean> | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchEnabledProviders().then((providers) => {
+      if (active) setAvailable(providers);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const start = (provider: OAuthProvider, fn: (path: string) => void, label: string) => {
+    if (available && !available[provider]) {
+      onError(`${label} sign-in is unavailable right now — please use your email and password below.`);
+      return;
+    }
     try {
       fn('/dashboard');
     } catch (err) {
@@ -124,19 +148,35 @@ export function OAuthButtons({ onError }: { onError: (message: string) => void }
     }
   };
 
-  const buttonClass =
-    'flex w-full items-center justify-center gap-2.5 border border-[var(--bp-line-faint)] px-6 py-3 bp-mono text-[12.5px] tracking-wide text-[var(--bp-ink)] transition-colors hover:border-[var(--bp-line)]';
+  const providers: { id: OAuthProvider; label: string; icon: ReactNode; go: (path: string) => void }[] = [
+    { id: 'github', label: 'GitHub', icon: <GitHubIcon />, go: signInWithGitHub },
+    { id: 'google', label: 'Google', icon: <GoogleIcon />, go: signInWithGoogle },
+  ];
 
   return (
     <div className="flex flex-col gap-2.5">
-      <button type="button" onClick={() => start(signInWithGitHub, 'GitHub')} className={buttonClass}>
-        <GitHubIcon />
-        Continue with GitHub
-      </button>
-      <button type="button" onClick={() => start(signInWithGoogle, 'Google')} className={buttonClass}>
-        <GoogleIcon />
-        Continue with Google
-      </button>
+      {providers.map(({ id, label, icon, go }) => {
+        // `null` = still checking; keep buttons live so the page is usable immediately.
+        const unavailable = available !== null && !available[id];
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => start(id, go, label)}
+            disabled={unavailable}
+            title={unavailable ? `${label} sign-in is not configured for this deployment` : undefined}
+            className={`flex w-full items-center justify-center gap-2.5 border px-6 py-3 bp-mono text-[12.5px] tracking-wide transition-colors ${
+              unavailable
+                ? 'cursor-not-allowed border-[var(--bp-line-faint)] text-[color-mix(in_oklab,var(--bp-ink-dim)_60%,transparent)] opacity-60'
+                : 'border-[var(--bp-line-faint)] text-[var(--bp-ink)] hover:border-[var(--bp-line)]'
+            }`}
+          >
+            <span className={unavailable ? 'opacity-50 grayscale' : undefined}>{icon}</span>
+            Continue with {label}
+            {unavailable && <span className="text-[10px] tracking-normal">(unavailable)</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }

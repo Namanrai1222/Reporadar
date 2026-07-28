@@ -87,6 +87,63 @@ export function refreshAccessToken(refreshToken: string) {
   );
 }
 
+/** OAuth providers the app has sign-in buttons for. */
+export const SUPPORTED_OAUTH_PROVIDERS = ["github", "google"] as const;
+export type OAuthProvider = (typeof SUPPORTED_OAUTH_PROVIDERS)[number];
+
+interface ProviderCache {
+  value: Record<OAuthProvider, boolean>;
+  expiresAt: number;
+}
+let providerCache: ProviderCache | null = null;
+const PROVIDER_CACHE_MS = 60_000;
+
+/**
+ * Ask GoTrue which external providers are enabled for this project.
+ *
+ * `/auth/v1/settings` is an unauthenticated metadata endpoint that reports the
+ * project's own configuration — it tells us nothing about users, and it is the
+ * only way to know whether `/authorize?provider=x` will succeed before sending
+ * the browser there. Cached briefly so rendering an auth page is not gated on a
+ * round-trip every time.
+ *
+ * Fails *open* deliberately: if the lookup itself fails we report every provider
+ * as available rather than hiding working buttons over a transient blip. The
+ * worst case is the pre-existing behaviour, and the click path still surfaces a
+ * readable error.
+ */
+export async function getEnabledOAuthProviders(): Promise<Record<OAuthProvider, boolean>> {
+  const now = Date.now();
+  if (providerCache && providerCache.expiresAt > now) return providerCache.value;
+
+  const allEnabled = Object.fromEntries(SUPPORTED_OAUTH_PROVIDERS.map((p) => [p, true])) as Record<
+    OAuthProvider,
+    boolean
+  >;
+
+  let value: Record<OAuthProvider, boolean>;
+  try {
+    const { supabaseUrl, supabaseAnonKey } = requireSupabaseConfig();
+    const response = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+      headers: { apikey: supabaseAnonKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!response.ok) return allEnabled;
+
+    const body = (await response.json()) as { external?: Record<string, boolean> };
+    const external = body.external ?? {};
+    value = Object.fromEntries(
+      SUPPORTED_OAUTH_PROVIDERS.map((p) => [p, external[p] === true]),
+    ) as Record<OAuthProvider, boolean>;
+  } catch {
+    return allEnabled;
+  }
+
+  providerCache = { value, expiresAt: now + PROVIDER_CACHE_MS };
+  return value;
+}
+
 /** Verify an access token and return its user, or null when the token is invalid/expired. */
 export async function getGoTrueUser(accessToken: string): Promise<{ id: string; email?: string } | null> {
   const { supabaseUrl, supabaseAnonKey } = requireSupabaseConfig();

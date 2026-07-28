@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Radar, GitBranch, ArrowRight, Lock, Map, BookOpen, Shield, Sparkles,
@@ -72,10 +73,9 @@ export default function HomePage() {
   const [recent, setRecent] = useState<RecentScan[]>([]);
 
   useEffect(() => {
-    if (!ready || !authenticated) {
-      setRecent([]);
-      return;
-    }
+    // Signed out: nothing to fetch. The list is derived below rather than
+    // cleared here, so no state is written synchronously during the effect.
+    if (!ready || !authenticated) return;
     let active = true;
     authFetch('/api/scans')
       .then((res) => (res.ok ? res.json() : { scans: [] }))
@@ -111,6 +111,9 @@ export default function HomePage() {
       active = false;
     };
   }, [ready, authenticated]);
+
+  // Never surface a previous session's scans after sign-out.
+  const visibleRecent = authenticated ? recent : [];
 
   async function handleScan(url?: string) {
     const targetUrl = url || githubUrl;
@@ -174,6 +177,21 @@ export default function HomePage() {
           {/* Main input area */}
           <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-5 py-10 md:px-8">
             <div className="w-full">
+              {/* Scanning a real repository is rejected server-side without an
+                  account. Say so up front rather than after the submit. */}
+              {ready && !authenticated && (
+                <div className="mb-5 flex items-start gap-3 border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-line)_6%,transparent)] px-4 py-3">
+                  <Lock className="mt-px h-3.5 w-3.5 shrink-0 text-[var(--bp-line)]" strokeWidth={1.5} />
+                  <p className="bp-mono text-[11.5px] leading-relaxed text-[var(--bp-ink-dim)]">
+                    Scanning a repository requires an account.{' '}
+                    <Link href="/signin" className="text-[var(--bp-line)] underline-offset-4 hover:underline">
+                      Sign in
+                    </Link>{' '}
+                    to continue, or use <span className="text-[var(--bp-ink)]">Try demo</span> for a sample report.
+                  </p>
+                </div>
+              )}
+
               <p className="bp-label mb-2">TARGET REPOSITORY</p>
               <div className="relative flex items-stretch border border-[var(--bp-line-soft)] bg-[color-mix(in_oklab,var(--bp-ground-2)_70%,transparent)] transition-colors focus-within:border-[var(--bp-line)]">
                 <span className="bp-reg" style={{ top: -1, left: -1 }} />
@@ -306,14 +324,14 @@ export default function HomePage() {
               Recent scans
             </p>
             <div className="flex flex-col gap-2">
-              {!authenticated || recent.length === 0 ? (
+              {visibleRecent.length === 0 ? (
                 <p className="bp-mono text-[11px] leading-relaxed text-[var(--bp-ink-dim)]">
                   {authenticated
                     ? 'No scans yet. Run one to build your history.'
                     : 'Sign in to keep a history of your scans.'}
                 </p>
               ) : (
-                recent.map((scan) => (
+                visibleRecent.map((scan) => (
                   <button
                     key={scan.id}
                     onClick={() => (scan.reportId ? router.push(`/report/${scan.reportId}`) : setGithubUrl(scan.url))}
