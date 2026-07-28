@@ -94,6 +94,24 @@ export async function refreshSession(): Promise<boolean> {
 export type OAuthProvider = 'github' | 'google';
 
 /**
+ * Which OAuth providers this deployment can actually complete a sign-in with.
+ * Resolved server-side from the Supabase project's own settings, so a provider
+ * that is not enabled there can be disabled in the UI instead of bouncing the
+ * user to GoTrue's raw JSON error page.
+ */
+export async function fetchEnabledProviders(): Promise<Record<OAuthProvider, boolean>> {
+  try {
+    const res = await fetch('/api/auth/providers', { cache: 'no-store' });
+    if (!res.ok) throw new Error('unavailable');
+    const data = (await res.json()) as { providers?: Record<OAuthProvider, boolean> };
+    return data.providers ?? { github: true, google: true };
+  } catch {
+    // Fail open — never hide a working button because of a transient blip.
+    return { github: true, google: true };
+  }
+}
+
+/**
  * Redirect the browser to a provider's OAuth consent screen via Supabase GoTrue.
  * On return, `captureOAuthRedirect()` re-homes the fragment tokens into cookies —
  * so the flow is identical for every provider.
