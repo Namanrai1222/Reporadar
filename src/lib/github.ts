@@ -61,40 +61,70 @@ const TEXT_EXTENSIONS = /\.(md|txt|json|js|jsx|ts|tsx|mjs|cjs|css|scss|html|py|g
  */
 const RAW_FETCH_CONCURRENCY = 8;
 
+/**
+ * Format an `x-ratelimit-reset` header for display.
+ *
+ * `Number(null)` is 0 rather than NaN, so a missing header would otherwise pass
+ * a plain isFinite check and render the epoch. A value beyond the Date range
+ * (±8.64e15 ms) makes `toISOString()` throw a RangeError, which inside an error
+ * path would replace a clear rate-limit message with an opaque 500.
+ */
+function formatResetTime(header: string | null): string {
+  if (header === null) return "shortly";
+  const seconds = Number(header);
+  if (!Number.isFinite(seconds) || seconds <= 0) return "shortly";
+
+  const ms = seconds * 1000;
+  if (Math.abs(ms) > 8.64e15) return "shortly";
+  try {
+    return new Date(ms).toISOString();
+  } catch {
+    return "shortly";
+  }
+}
+
+/**
+ * Turn a failed GitHub API response into a typed error.
+ *
+ * Shared by every GitHub call so a rate limit hit while fetching the tree is
+ * reported the same way as one hit while fetching the repository, rather than
+ * collapsing into a generic SCAN_FAILED.
+ */
+function githubResponseError(response: Response, notFoundMessage: string, context: string): AppError {
+  if (response.status === 404) {
+    return new AppError("REPO_NOT_FOUND", notFoundMessage, 404);
+  }
+
+  // Unauthenticated GitHub API calls share a 60/hour budget across the whole
+  // server, so this is the first thing to fail under any real use. Say so
+  // plainly instead of "try again shortly" — the fix is a GITHUB_TOKEN, and
+  // the reset time is the only useful thing to wait for.
+  if (response.status === 403 || response.status === 429) {
+    if (response.headers.get("x-ratelimit-remaining") === "0") {
+      const resetsAt = formatResetTime(response.headers.get("x-ratelimit-reset"));
+      return new AppError(
+        "GITHUB_RATE_LIMITED",
+        `GitHub's API rate limit is exhausted (resets at ${resetsAt}). Set GITHUB_TOKEN to raise the limit from 60 to 5000 requests/hour.`,
+        503,
+      );
+    }
+    return new AppError("GITHUB_FORBIDDEN", `GitHub refused the ${context} request.`, 502);
+  }
+
+  return new AppError("GITHUB_UNAVAILABLE", `GitHub rejected the ${context} request. Try again shortly.`, 502);
+}
+
 export async function fetchPublicGitHubRepo(githubUrl: string, requestedBranch?: string) {
   const parsed = parseGitHubRepoUrl(githubUrl);
   const repoApiUrl = `https://api.github.com/repos/${parsed.owner}/${parsed.name}`;
   const repoResponse = await githubFetch(repoApiUrl);
 
   if (!repoResponse.ok) {
-    if (repoResponse.status === 404) {
-      throw new AppError(
-        "REPO_NOT_FOUND",
-        "We could not access this repository. Check the link and that the repository is public.",
-        404,
-      );
-    }
-    // Unauthenticated GitHub API calls share a 60/hour budget across the whole
-    // server, so this is the first thing to fail under any real use. Say so
-    // plainly instead of "try again shortly" — the fix is a GITHUB_TOKEN, and
-    // the reset time is the only useful thing to wait for.
-    if (repoResponse.status === 403 || repoResponse.status === 429) {
-      const remaining = repoResponse.headers.get("x-ratelimit-remaining");
-      if (remaining === "0") {
-        // `Number(null)` is 0, not NaN, so a missing header would otherwise pass
-        // the isFinite check and render the epoch — "resets at 1970-01-01".
-        const resetHeader = repoResponse.headers.get("x-ratelimit-reset");
-        const reset = resetHeader === null ? NaN : Number(resetHeader);
-        const resetsAt = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString() : "shortly";
-        throw new AppError(
-          "GITHUB_RATE_LIMITED",
-          `GitHub's API rate limit is exhausted (resets at ${resetsAt}). Set GITHUB_TOKEN to raise the limit from 60 to 5000 requests/hour.`,
-          503,
-        );
-      }
-      throw new AppError("GITHUB_FORBIDDEN", "GitHub refused the repository request.", 502);
-    }
-    throw new AppError("GITHUB_UNAVAILABLE", "GitHub rejected the repository request. Try again shortly.", 502);
+    throw githubResponseError(
+      repoResponse,
+      "We could not access this repository. Check the link and that the repository is public.",
+      "repository",
+    );
   }
 
   const repoData = (await repoResponse.json()) as GitHubRepoResponse;
@@ -103,12 +133,22 @@ export async function fetchPublicGitHubRepo(githubUrl: string, requestedBranch?:
   const treeResponse = await githubFetch(treeUrl);
 
   if (!treeResponse.ok) {
-    throw new Error("Selected branch could not be scanned.");
+    // Classified like the repository call: a rate limit or outage hit here is
+    // the same failure, and reporting it as a generic error lost the code.
+    throw githubResponseError(
+      treeResponse,
+      `The branch "${branch}" could not be found in this repository.`,
+      "branch",
+    );
   }
 
   const treeData = (await treeResponse.json()) as GitHubTreeResponse;
   if (treeData.tree.length > SECURITY_LIMITS.maxFilesInTree) {
-    throw new Error(`This repository exceeds the scan limit of ${SECURITY_LIMITS.maxFilesInTree} files.`);
+    throw new AppError(
+      "REPO_TOO_LARGE",
+      `This repository exceeds the scan limit of ${SECURITY_LIMITS.maxFilesInTree} files.`,
+      413,
+    );
   }
 
   const identity: RepoIdentity = {
