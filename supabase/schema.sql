@@ -10,16 +10,6 @@ create table if not exists public.users (
 -- Idempotent migration for projects created before plan_tier existed.
 alter table public.users add column if not exists plan_tier text not null default 'free';
 
--- A scan whose report was written but whose bookkeeping then failed is not the
--- same as one that produced nothing; without a state for it, a usable report
--- gets reported to the user as a failure. Rebuilt rather than added so the
--- migration lands on databases created before the state existed.
-alter table public.scans drop constraint if exists scans_status_check;
-alter table public.scans add constraint scans_status_check
-  check (status in ('queued', 'cloning', 'parsing', 'building_structure', 'security_analysis',
-                    'retrieval', 'llm_synthesis', 'completed', 'completed_with_errors',
-                    'failed', 'cancelled'));
-
 -- Ensure migrated databases get the same check constraint as fresh installs.
 do $$
 begin
@@ -46,6 +36,20 @@ create table if not exists public.scans (
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
+
+-- A scan whose report was written but whose bookkeeping then failed is not the
+-- same as one that produced nothing; without a state for it, a usable report
+-- gets reported to the user as a failure. Rebuilt rather than added so the
+-- migration also lands on databases created before the state existed.
+--
+-- Must follow the create above: `drop constraint if exists` only tolerates a
+-- missing *constraint*, not a missing table, so running this first would abort
+-- a fresh install. `alter table if exists` covers the table for the same reason.
+alter table if exists public.scans drop constraint if exists scans_status_check;
+alter table if exists public.scans add constraint scans_status_check
+  check (status in ('queued', 'cloning', 'parsing', 'building_structure', 'security_analysis',
+                    'retrieval', 'llm_synthesis', 'completed', 'completed_with_errors',
+                    'failed', 'cancelled'));
 
 create table if not exists public.findings (
   id text primary key,

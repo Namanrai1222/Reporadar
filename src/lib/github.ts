@@ -81,8 +81,11 @@ export async function fetchPublicGitHubRepo(githubUrl: string, requestedBranch?:
     if (repoResponse.status === 403 || repoResponse.status === 429) {
       const remaining = repoResponse.headers.get("x-ratelimit-remaining");
       if (remaining === "0") {
-        const reset = Number(repoResponse.headers.get("x-ratelimit-reset"));
-        const resetsAt = Number.isFinite(reset) ? new Date(reset * 1000).toISOString() : "shortly";
+        // `Number(null)` is 0, not NaN, so a missing header would otherwise pass
+        // the isFinite check and render the epoch — "resets at 1970-01-01".
+        const resetHeader = repoResponse.headers.get("x-ratelimit-reset");
+        const reset = resetHeader === null ? NaN : Number(resetHeader);
+        const resetsAt = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString() : "shortly";
         throw new AppError(
           "GITHUB_RATE_LIMITED",
           `GitHub's API rate limit is exhausted (resets at ${resetsAt}). Set GITHUB_TOKEN to raise the limit from 60 to 5000 requests/hour.`,
