@@ -28,7 +28,7 @@ create table if not exists public.scans (
   github_url text not null,
   branch text not null default 'default',
   mode text not null check (mode in ('full-map', 'security-lens', 'onboarding')),
-  status text not null check (status in ('queued', 'cloning', 'parsing', 'building_structure', 'security_analysis', 'retrieval', 'llm_synthesis', 'completed', 'failed', 'cancelled')),
+  status text not null check (status in ('queued', 'cloning', 'parsing', 'building_structure', 'security_analysis', 'retrieval', 'llm_synthesis', 'completed', 'completed_with_errors', 'failed', 'cancelled')),
   stage text not null,
   trace_id text not null,
   error_code text,
@@ -36,6 +36,20 @@ create table if not exists public.scans (
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
+
+-- A scan whose report was written but whose bookkeeping then failed is not the
+-- same as one that produced nothing; without a state for it, a usable report
+-- gets reported to the user as a failure. Rebuilt rather than added so the
+-- migration also lands on databases created before the state existed.
+--
+-- Must follow the create above: `drop constraint if exists` only tolerates a
+-- missing *constraint*, not a missing table, so running this first would abort
+-- a fresh install. `alter table if exists` covers the table for the same reason.
+alter table if exists public.scans drop constraint if exists scans_status_check;
+alter table if exists public.scans add constraint scans_status_check
+  check (status in ('queued', 'cloning', 'parsing', 'building_structure', 'security_analysis',
+                    'retrieval', 'llm_synthesis', 'completed', 'completed_with_errors',
+                    'failed', 'cancelled'));
 
 create table if not exists public.findings (
   id text primary key,

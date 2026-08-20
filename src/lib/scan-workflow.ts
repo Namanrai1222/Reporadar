@@ -10,7 +10,7 @@ import { createPersistenceAdapter } from "./persistence";
 import { retrieveArtifacts, applySynthesis, RETRIEVAL_VERSION } from "./retrieval";
 import { assertSafeServerEnvironment, parseGitHubRepoUrl } from "./security";
 import { createQueueAdapter, createQueueJob } from "./queue";
-import { beginConcurrentJob, clientFingerprint, consumeDailyScan, dailyLimitForPlan } from "./rate-limit";
+import { beginConcurrentJob, clientFingerprint, consumeDailyScan, dailyLimitForPlan, humanizeReset, refundDailyScan } from "./rate-limit";
 
 const MODES: ScanMode[] = ["full-map", "security-lens", "onboarding"];
 const SCANNER_VERSION = "rules-v1";
@@ -65,7 +65,7 @@ export async function createScan(request: Request) {
     const daily = await consumeDailyScan(user.id, "user", limit);
     emitTelemetry(trace, "scan.ratelimit", { kind: "user", used: daily.used, limit, allowed: daily.allowed });
     if (!daily.allowed) {
-      throw new AppError("RATE_LIMITED", `Daily scan limit reached (${limit}/day). Resets at ${daily.resetAt}.`, 429);
+      throw new AppError("RATE_LIMITED", `Daily scan limit reached (${limit}/day). Resets ${humanizeReset(daily.resetAt)}.`, 429);
     }
   } else {
     const fingerprint = clientFingerprint(request);
@@ -82,6 +82,14 @@ export async function createScan(request: Request) {
   if (concurrency && !concurrency.allowed) {
     throw new AppError("RATE_LIMITED", "You already have a scan running. Wait for it to finish before starting another.", 429);
   }
+
+  // Identifies the budget to refund if the scan never produces a report.
+  const quotaSubject = user ? { subject: user.id, kind: "user" as const } : { subject: clientFingerprint(request), kind: "anonymous" as const };
+  let scanSucceeded = false;
+  // Written by runScanImmediately. A scan can persist a report and *then* throw
+  // (the `completed_with_errors` case); the throw alone does not mean the user
+  // got nothing, so the refund decision needs this rather than just the reject.
+  const outcome = { reportPersisted: false };
 
   try {
     const scan = user
@@ -100,7 +108,8 @@ export async function createScan(request: Request) {
     const queued = await queue.enqueue(createQueueJob(payload, trace.traceId, scan?.id));
     emitTelemetry(trace, "scan.queue.enqueued", { provider: queued.provider, jobId: queued.jobId });
 
-    const report = await runScanImmediately(payload, user?.id, scan?.id, trace.traceId);
+    const report = await runScanImmediately(payload, user?.id, scan?.id, trace.traceId, outcome);
+    scanSucceeded = true;
     return {
       report,
       traceId: trace.traceId,
@@ -110,17 +119,42 @@ export async function createScan(request: Request) {
       productNotice:
         "We never store your source code; only masked analysis results, metadata, and generated reports can be saved to your account.",
     };
+  } catch (error) {
+    // Surface the underlying cause. Without this the real exception (GitHub
+    // outage, LLM failure, persistence error) is only ever seen as a generic
+    // message in the browser, leaving nothing to diagnose from.
+    console.error(
+      `[scan] failed trace=${trace.traceId} repo=${parsed.owner}/${parsed.name} mode=${payload.mode}:`,
+      error,
+    );
+    throw error;
   } finally {
+    // The daily budget is spent before the work starts, so a scan that never
+    // produced a report must hand its unit back. A scan that persisted a report
+    // and then failed keeps its charge — the user has readable results.
+    if (!scanSucceeded && !outcome.reportPersisted) {
+      await refundDailyScan(quotaSubject.subject, quotaSubject.kind);
+    }
     await concurrency?.release();
   }
 }
 
-async function runScanImmediately(payload: ScanRequest, userId?: string, scanId?: string, traceId?: string): Promise<Report> {
+/**
+ * `outcome` reports back across the throw boundary: the caller cannot otherwise
+ * tell a scan that produced nothing from one that persisted a report and then
+ * tripped on a later step, and the two are charged differently.
+ */
+async function runScanImmediately(
+  payload: ScanRequest,
+  userId?: string,
+  scanId?: string,
+  traceId?: string,
+  outcome: { reportPersisted: boolean } = { reportPersisted: false },
+): Promise<Report> {
   const trace = { traceId: traceId ?? "local-trace", startedAt: Date.now(), userId, scanId };
   const persistence = createPersistenceAdapter();
   const cache = createCacheAdapter();
   const provider = createLlmProvider();
-
   try {
     if (scanId) await persistence.updateScan(scanId, { status: "cloning", stage: "cloning" });
     const source = await fetchPublicGitHubRepo(payload.githubUrl, payload.branch);
@@ -156,6 +190,7 @@ async function runScanImmediately(payload: ScanRequest, userId?: string, scanId?
     if (userId && scanId && persistence.configured) {
       await persistence.saveFindings(scanId, userId, report.findings);
       await persistence.saveReport(scanId, userId, report);
+      outcome.reportPersisted = true;
       await persistence.updateScan(scanId, {
         status: "completed",
         stage: "completed",
@@ -174,8 +209,8 @@ async function runScanImmediately(payload: ScanRequest, userId?: string, scanId?
   } catch (error) {
     if (scanId) {
       await persistence.updateScan(scanId, {
-        status: "failed",
-        stage: "failed",
+        status: outcome.reportPersisted ? "completed_with_errors" : "failed",
+        stage: outcome.reportPersisted ? "completed_with_errors" : "failed",
         error_code: error instanceof AppError ? error.code : "SCAN_FAILED",
         error_message: error instanceof Error ? error.message : "Scan failed.",
       });
