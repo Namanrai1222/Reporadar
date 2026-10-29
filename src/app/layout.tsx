@@ -14,7 +14,10 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RepoRadar | AI-Powered GitHub Repository Intelligence and Security Analysis",
+  title: {
+    default: "RepoRadar | AI-Powered GitHub Repository Intelligence and Security Analysis",
+    template: "%s | RepoRadar",
+  },
   description:
     "Repository X-ray platform for deterministic GitHub analysis, security findings, architecture maps, and grounded LLM synthesis.",
 };

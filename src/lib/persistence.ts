@@ -68,6 +68,7 @@ export interface PersistenceAdapter {
   saveFindings(scanId: string, userId: string, findings: Finding[]): Promise<void>;
   getReport(reportId: string, userId: string): Promise<Report | null>;
   listScans(userId: string): Promise<PersistedScan[]>;
+  getScan(scanId: string, userId: string): Promise<PersistedScan | null>;
   getUserPlan(userId: string): Promise<string>;
   listSavedReports(userId: string): Promise<SavedReportSummary[]>;
   saveReportBookmark(userId: string, reportId: string): Promise<void>;
@@ -226,6 +227,20 @@ class SupabasePersistenceAdapter implements PersistenceAdapter {
     });
   }
 
+  async getScan(scanId: string, userId: string) {
+    requireUserId(userId);
+    const rows = await this.db.table<PersistedScan & { reports?: Array<{ id: string }> | { id: string } | null }>(
+      "scans",
+      {
+        query: `id=eq.${enc(scanId)}&user_id=eq.${enc(userId)}&select=*,reports(id)&limit=1`,
+      },
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const { reports, ...scan } = row;
+    return { ...scan, report_id: firstOf(reports)?.id ?? null };
+  }
+
   async getUserPlan(userId: string) {
     requireUserId(userId);
     const rows = await this.db.table<{ plan_tier: string }>("users", {
@@ -300,6 +315,10 @@ class LocalDisabledPersistenceAdapter implements PersistenceAdapter {
 
   async listScans() {
     return [];
+  }
+
+  async getScan() {
+    return null;
   }
 
   async getUserPlan() {

@@ -5,15 +5,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Star, GitFork, Globe, Map, Shield, GitMerge, Leaf, BookOpen, Download, ArrowLeft,
-  Bookmark, BookmarkCheck, Loader2,
+  Bookmark, BookmarkCheck, Loader2, Lock, FileQuestion, Layers,
 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/AppPage';
 import type { Report } from '@/lib/types';
+import type { ReportProblem } from '@/lib/use-report';
 import { RepoRadarLogo } from '@/components/brand/RepoRadarLogo';
 import { authFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/use-auth';
 
 const NAV_ITEMS = [
   { href: '', label: 'Overview', icon: Globe },
+  { href: '/architecture', label: 'Architecture', icon: Layers },
   { href: '/map', label: 'Map', icon: Map },
   { href: '/findings', label: 'Findings', icon: Shield },
   { href: '/routes', label: 'Routes', icon: GitMerge },
@@ -26,11 +29,14 @@ export function ReportShell({
   report,
   reportId,
   initialSaved = false,
+  problem = null,
 }: {
   children: React.ReactNode;
   report: Report | null;
   reportId: string;
   initialSaved?: boolean;
+  /** Set once loading finished without a report the viewer can see. */
+  problem?: ReportProblem;
 }) {
   const pathname = usePathname();
   const { authenticated } = useAuth();
@@ -85,7 +91,8 @@ export function ReportShell({
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    URL.revokeObjectURL(url);
+    // Revoking synchronously can cancel the download in Firefox and Safari.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   const basePath = `/report/${reportId}`;
@@ -106,7 +113,8 @@ export function ReportShell({
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--bp-ground)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_92%,transparent)] backdrop-blur-md">
+      <title>{report ? `${report.repo.owner}/${report.repo.name} | RepoRadar` : 'Report | RepoRadar'}</title>
+      <header className="top-0 z-30 border-b md:sticky border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_92%,transparent)] backdrop-blur-md">
         <div className="mx-auto max-w-7xl px-5 pt-3 md:px-6">
           {/* top strip */}
           <div className="mb-3 flex items-center justify-between">
@@ -124,7 +132,7 @@ export function ReportShell({
             </div>
             <div className="flex items-center gap-2">
               {saveNote && <span className="bp-mono text-[10px] text-[var(--bp-ink-dim)]">{saveNote}</span>}
-              {authenticated && (
+              {authenticated && !problem && (
                 <button
                   type="button"
                   onClick={toggleSave}
@@ -141,6 +149,7 @@ export function ReportShell({
                   {saved ? 'Saved' : 'Save'}
                 </button>
               )}
+              {!problem && (
               <button
                 type="button"
                 onClick={exportMarkdown}
@@ -150,19 +159,26 @@ export function ReportShell({
                 <Download className="h-3.5 w-3.5" strokeWidth={1.5} />
                 Export
               </button>
+              )}
             </div>
           </div>
 
           {/* repo identity */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <a
-              href={report?.repo.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bp-mono text-[15px] font-medium text-[var(--bp-ink)] transition-colors hover:text-[var(--bp-line)]"
-            >
-              {report ? `${report.repo.owner}/${report.repo.name}` : reportId}
-            </a>
+            {report ? (
+              <a
+                href={report.repo.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bp-mono text-[15px] font-medium text-[var(--bp-ink)] transition-colors hover:text-[var(--bp-line)]"
+              >
+                {`${report.repo.owner}/${report.repo.name}`}
+              </a>
+            ) : (
+              <span className="bp-mono text-[15px] font-medium text-[var(--bp-ink-dim)]">
+                {problem ? 'Report unavailable' : 'Loading report…'}
+              </span>
+            )}
             {report?.repo.branch && (
               <span className="border border-[var(--bp-line-faint)] px-1.5 py-0.5 bp-mono text-[10px] text-[var(--bp-ink-dim)]">
                 {report.repo.branch}
@@ -205,6 +221,7 @@ export function ReportShell({
           )}
 
           {/* tabs */}
+          {!problem && (
           <nav className="-mb-px mt-4 flex items-center gap-0 overflow-x-auto">
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
               const active = isActive(href);
@@ -230,10 +247,32 @@ export function ReportShell({
               );
             })}
           </nav>
+          )}
+          {problem && <div className="h-4" />}
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-6 md:px-6">{children}</main>
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-5 py-6 md:px-6">
+        {problem === 'auth' ? (
+          <EmptyState
+            icon={Lock}
+            title="Sign in to view this report"
+            body="Reports belong to the account that ran the scan."
+            ctaHref={`/signin?next=${encodeURIComponent(pathname)}`}
+            ctaLabel="Sign in"
+          />
+        ) : problem === 'missing' ? (
+          <EmptyState
+            icon={FileQuestion}
+            title="Report not found"
+            body="It may have been deleted, or it belongs to another account."
+            ctaHref="/dashboard"
+            ctaLabel="Start a new scan"
+          />
+        ) : (
+          children
+        )}
+      </main>
     </div>
   );
 }

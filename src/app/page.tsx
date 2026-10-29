@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
@@ -85,11 +86,20 @@ function Nav() {
 
 /* ============================================================ Repo input — drafted spec field */
 function RepoInput() {
+  const router = useRouter();
+  const inputId = useId(); // rendered twice on the page (hero + closing CTA)
   const [url, setUrl] = useState('');
+  const target = url.trim() ? `/dashboard?repo=${encodeURIComponent(url.trim())}` : '/dashboard';
   return (
-    <div className="relative">
+    <form
+      className="relative"
+      onSubmit={(e) => {
+        e.preventDefault();
+        router.push(target);
+      }}
+    >
       <div className="bp-label mb-2 flex items-center justify-between">
-        <span>INPUT — TARGET REPOSITORY</span>
+        <label htmlFor={inputId}>INPUT — TARGET REPOSITORY</label>
         <span className="text-[var(--bp-ink-dim)]">public · https</span>
       </div>
       <div className="group relative flex items-stretch border border-[var(--bp-line-soft)] bg-[color-mix(in_oklab,var(--bp-ground-2)_70%,transparent)] transition-colors focus-within:border-[var(--bp-line)]">
@@ -101,21 +111,24 @@ function RepoInput() {
           <GitBranch className="h-[18px] w-[18px]" />
         </span>
         <input
+          id={inputId}
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="github.com/facebook/react"
           spellCheck={false}
-          className="peer w-full flex-1 bg-transparent bp-mono text-[14px] text-[var(--bp-ink)] outline-none placeholder:text-[color-mix(in_oklab,var(--bp-ink-dim)_60%,transparent)]"
+          autoComplete="off"
+          inputMode="url"
+          className="peer w-full min-w-0 flex-1 bg-transparent py-3 bp-mono text-[14px] text-[var(--bp-ink)] outline-none placeholder:text-[color-mix(in_oklab,var(--bp-ink-dim)_60%,transparent)]"
         />
-        <Link
-          href="/dashboard"
-          className="group/btn relative inline-flex shrink-0 items-center gap-2 border-l border-[var(--bp-line-soft)] bg-[color-mix(in_oklab,var(--bp-line)_10%,transparent)] px-5 bp-mono text-[12px] tracking-wide text-[var(--bp-ink)] transition-colors hover:bg-[var(--bp-line)] hover:text-[var(--bp-ground)]"
+        <button
+          type="submit"
+          className="group/btn relative inline-flex shrink-0 items-center gap-2 border-l border-[var(--bp-line-soft)] bg-[color-mix(in_oklab,var(--bp-line)_10%,transparent)] px-5 bp-mono text-[12px] tracking-wide text-[var(--bp-ink)] transition-colors hover:bg-[var(--bp-line)] hover:text-[var(--bp-ground)] focus-visible:bg-[var(--bp-line)] focus-visible:text-[var(--bp-ground)] focus-visible:outline-none"
         >
           RUN SCAN
           <ArrowRight className="h-4 w-4" />
-        </Link>
+        </button>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -131,7 +144,7 @@ function Hero() {
 
       <div className="relative z-10 mx-auto max-w-[1320px] px-8">
         {/* sheet header strip */}
-        <Reveal from="none">
+        <Reveal from="none" onMount>
           <div className="flex items-center justify-between border-b border-[var(--bp-line-faint)] pb-3 bp-label">
             <span>REPORADAR · REPOSITORY X-RAY</span>
             <span className="hidden sm:inline text-[var(--bp-ink-dim)]">SHEET 01 / 04 — REV A — SCALE 1:1</span>
@@ -141,7 +154,7 @@ function Hero() {
         <div className="grid grid-cols-1 items-center gap-x-12 gap-y-14 pt-12 lg:grid-cols-[1.02fr_1fr] lg:pt-16">
           {/* left — headline + drafted input */}
           <div>
-            <Reveal from="up">
+            <Reveal from="up" onMount>
               <p className="bp-label mb-6">FIG.01 — DETERMINISTIC ANALYSIS</p>
             </Reveal>
 
@@ -151,24 +164,24 @@ function Hero() {
             </h1>
 
             {/* dimension line under the headline */}
-            <Reveal from="none" delay={0.3}>
+            <Reveal from="none" delay={0.25} onMount>
               <div className="mt-6 flex items-center gap-3 text-[var(--bp-line)]">
                 <span className="h-2 w-px bg-[var(--bp-line-soft)]" />
                 <span className="h-px flex-1 bg-[var(--bp-line-faint)]" />
-                <span className="bp-mono text-[10px]">30s · 10 SCANNERS · 0 STORED</span>
+                <span className="bp-mono text-[10px]">8 CHECKS · 0 EXECUTED · 0 STORED</span>
                 <span className="h-px flex-1 bg-[var(--bp-line-faint)]" />
                 <span className="h-2 w-px bg-[var(--bp-line-soft)]" />
               </div>
             </Reveal>
 
-            <Reveal from="up" delay={0.36}>
+            <Reveal from="up" delay={0.3} onMount>
               <p className="mt-7 max-w-[34rem] text-[16px] leading-relaxed text-[var(--bp-ink-dim)]">
                 Paste a URL. RepoRadar drafts the architecture, flags leaked secrets and weak auth, and writes
                 grounded onboarding docs — statically. Nothing executed. No source stored.
               </p>
             </Reveal>
 
-            <Reveal from="up" delay={0.46}>
+            <Reveal from="up" delay={0.35} onMount>
               <div className="mt-9 max-w-[34rem]">
                 <RepoInput />
               </div>
@@ -176,7 +189,7 @@ function Hero() {
           </div>
 
           {/* right — schematic drawing area */}
-          <Reveal from="left" delay={0.2}>
+          <Reveal from="left" delay={0.15} onMount>
             <figure className="relative">
               <div className="bp-frame relative aspect-[68/47] w-full overflow-hidden bg-[color-mix(in_oklab,var(--bp-ground-2)_60%,transparent)]">
                 <span className="bp-reg z-20" style={{ top: -1, left: -1 }} />
@@ -198,7 +211,7 @@ function Hero() {
                   <span className="h-2 w-px bg-[var(--bp-line-soft)]" />
                 </div>
                 <span className="bp-mono pointer-events-none absolute bottom-3 left-5 z-10 text-[9px] text-[var(--bp-ink-dim)]">
-                  FIG.01 — AXONOMETRIC · facebook/react
+                  FIG.01 — AXONOMETRIC · ILLUSTRATIVE
                 </span>
                 <span className="bp-mono pointer-events-none absolute right-5 top-4 z-10 text-[9px] text-[var(--bp-line)]">
                   ISO · 1:1
@@ -247,7 +260,7 @@ function SplitLine({ text, delay }: { text: string; delay: number }) {
 /* ============================================================ Readout */
 const CONSOLE_LINES = [
   { text: 'clone repository metadata', tag: 'OK', color: 'var(--bp-line)' },
-  { text: 'map 112 components · 47 routes', tag: 'OK', color: 'var(--bp-line)' },
+  { text: 'map 34 components · 47 routes', tag: 'OK', color: 'var(--bp-line)' },
   { text: 'secret pattern · src/config.ts', tag: 'CRIT', color: 'var(--bp-critical)' },
   { text: '3 undocumented env variables', tag: 'WARN', color: 'var(--bp-alert)' },
   { text: 'report drafted in 18.4s', tag: 'DONE', color: 'var(--bp-line)' },
@@ -311,7 +324,7 @@ function ProcessSection() {
           <Reveal><p className="bp-label mb-5">FIG.02 — ANALYSIS PIPELINE</p></Reveal>
           <Reveal delay={0.05}>
             <h2 className="font-display text-[clamp(1.9rem,4vw,2.9rem)] font-semibold text-[var(--bp-ink)]">
-              Ten scanners, one pass, <br className="hidden sm:block" />zero code executed.
+              Eight checks, one pass, <br className="hidden sm:block" />zero code executed.
             </h2>
           </Reveal>
           <Reveal delay={0.1}>
@@ -323,7 +336,7 @@ function ProcessSection() {
 
           <RevealGroup className="mt-9 flex flex-col" stagger={0.08}>
             {[
-              ['01', 'Abstract syntax trees', 'Parse every file into dependency graphs.'],
+              ['01', 'Source mapping', 'Index files, routes and env usage into a graph.'],
               ['02', 'Pattern matching', 'Surface exposed keys and credentials.'],
               ['03', 'Path resolution', 'Trace client routes to server endpoints.'],
             ].map(([n, title, desc]) => (
@@ -355,7 +368,7 @@ function Metrics() {
   const stats = [
     { value: '<30s', label: 'Time to insight' },
     { value: '0', label: 'Source files stored' },
-    { value: '10+', label: 'Security scanners' },
+    { value: '8', label: 'Static checks' },
     { value: '100%', label: 'Static analysis' },
   ];
   return (
@@ -523,7 +536,7 @@ function DecoSchematic() {
 /* ============================================================ Security */
 function Security() {
   const cards = [
-    { icon: FileCode, code: '01', title: 'No code execution', desc: 'We parse the AST statically. Your code is never run, compiled, or executed on our servers.' },
+    { icon: FileCode, code: '01', title: 'No code execution', desc: 'We read source as text. Your code is never run, compiled, or executed on our servers.' },
     { icon: Shield, code: '02', title: 'Secrets masked', desc: 'Any detected secret is masked (sk-live-••••) in memory before the report is ever rendered.' },
     { icon: Database, code: '03', title: 'Source never stored', desc: 'Only masked results, metadata, and summaries persist. Raw source and chunks are never saved.' },
   ];

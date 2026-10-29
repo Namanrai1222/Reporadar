@@ -46,10 +46,8 @@ export class SupabaseRestClient {
       throw new AppError("DATABASE_ERROR", `Supabase request failed for ${table}: ${text}`, response.status);
     }
 
-    if (response.status === 204) {
-      return [] as T[];
-    }
-
-    return (await response.json()) as T[];
+    // `Prefer: return=minimal` writes answer 201 (not just 204) with an empty body.
+    const text = await response.text();
+    return (text ? JSON.parse(text) : []) as T[];
   }
 }

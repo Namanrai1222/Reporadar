@@ -2,7 +2,7 @@
 
 import { Suspense, use } from 'react';
 import { ReportShell } from '@/components/ui/ReportShell';
-import { useReportData } from '@/lib/use-report';
+import { ReportContext, useFetchedReport } from '@/lib/use-report';
 
 // Client component that resolves the report by id (contents never travel in the URL).
 function ReportLayoutContent({
@@ -12,12 +12,19 @@ function ReportLayoutContent({
   children: React.ReactNode;
   reportId: string;
 }) {
-  const { report, saved } = useReportData(reportId);
+  const data = useFetchedReport(reportId);
 
   return (
-    <ReportShell report={report} reportId={reportId} initialSaved={saved}>
-      {children}
-    </ReportShell>
+    <ReportContext.Provider value={{ id: reportId, ...data }}>
+      <ReportShell
+        report={data.report}
+        reportId={reportId}
+        initialSaved={data.saved}
+        problem={data.loading ? null : data.problem}
+      >
+        {children}
+      </ReportShell>
+    </ReportContext.Provider>
   );
 }
 

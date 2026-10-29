@@ -1,14 +1,23 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import { AuthShell, Field, FormError, SubmitButton, OAuthButtons } from '@/components/auth/AuthShell';
-import { signIn } from '@/lib/auth-client';
+import { safeNext, signIn } from '@/lib/auth-client';
 
 export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignInForm />
+    </Suspense>
+  );
+}
+
+function SignInForm() {
   const router = useRouter();
+  const next = safeNext(useSearchParams().get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -20,7 +29,7 @@ export default function SignInPage() {
     setLoading(true);
     try {
       await signIn(email, password);
-      router.push('/dashboard');
+      router.push(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign in.');
       setLoading(false);
@@ -35,7 +44,7 @@ export default function SignInPage() {
       footer="Static analysis only · Source code is never stored."
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <OAuthButtons onError={setError} />
+        <OAuthButtons onError={setError} next={next} />
 
         <div className="flex items-center gap-3 py-1">
           <span className="h-px flex-1 bg-[var(--bp-line-faint)]" />
@@ -57,6 +66,11 @@ export default function SignInPage() {
         <Field
           id="password"
           label="Password"
+          hint={
+            <Link href="/forgot-password" className="text-[var(--bp-line)] underline-offset-4 hover:underline">
+              Forgot password?
+            </Link>
+          }
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -74,7 +88,7 @@ export default function SignInPage() {
 
         <p className="mt-2 bp-mono text-[11.5px] text-[var(--bp-ink-dim)]">
           No account?{' '}
-          <Link href="/signup" className="text-[var(--bp-line)] underline-offset-4 hover:underline">
+          <Link href={next === '/dashboard' ? '/signup' : `/signup?next=${encodeURIComponent(next)}`} className="text-[var(--bp-line)] underline-offset-4 hover:underline">
             Create one
           </Link>
           {' · '}

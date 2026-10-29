@@ -116,13 +116,12 @@ export default function FindingsPage() {
         </div>
 
         {/* Table header */}
-        <div className="grid grid-cols-[76px_1fr_140px] gap-4 border-b border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] px-5 py-2 md:grid-cols-[80px_1fr_160px_90px] md:px-6">
+        <div className="grid grid-cols-[84px_1fr] gap-4 border-b border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] px-5 py-2 md:grid-cols-[84px_1fr_130px] md:px-6">
           <button onClick={() => handleSort('severity')} className="flex items-center gap-1 bp-label hover:text-[var(--bp-ink)]">
             Severity {sortIcon('severity')}
           </button>
-          <span className="bp-label">Finding</span>
           <button onClick={() => handleSort('file')} className="flex items-center gap-1 bp-label hover:text-[var(--bp-ink)]">
-            File {sortIcon('file')}
+            Finding · file {sortIcon('file')}
           </button>
           <span className="hidden bp-label md:block">Category</span>
         </div>
@@ -141,19 +140,21 @@ export default function FindingsPage() {
                 <button
                   key={finding.id}
                   onClick={() => setSelectedFinding(on ? null : finding)}
-                  className={`grid w-full grid-cols-[76px_1fr_140px] items-center gap-4 border-b border-[var(--bp-line-faint)] px-5 py-3 text-left transition-colors hover:bg-[color-mix(in_oklab,var(--bp-line)_6%,transparent)] md:grid-cols-[80px_1fr_160px_90px] md:px-6 ${
+                  aria-pressed={on}
+                  className={`grid w-full grid-cols-[84px_1fr] items-start gap-4 border-b border-[var(--bp-line-faint)] px-5 py-3 text-left transition-colors hover:bg-[color-mix(in_oklab,var(--bp-line)_6%,transparent)] focus-visible:bg-[color-mix(in_oklab,var(--bp-line)_9%,transparent)] focus-visible:outline-none md:grid-cols-[84px_1fr_130px] md:px-6 ${
                     on ? 'bg-[color-mix(in_oklab,var(--bp-line)_9%,transparent)]' : ''
                   }`}
                 >
                   <SeverityBadge severity={finding.severity} showDot />
                   <div className="min-w-0">
-                    <p className="truncate text-[13px] font-medium text-[var(--bp-ink)]">{finding.title}</p>
-                    <p className="mt-0.5 bp-mono text-[11px] text-[var(--bp-ink-dim)]">Line {finding.lineNumber}</p>
+                    <p className="line-clamp-2 text-[13px] font-medium leading-snug text-[var(--bp-ink)]">{finding.title}</p>
+                    {/* Full path: two segments alone ("[id]/route.ts") are ambiguous across a repo. */}
+                    <p className="mt-1 break-all bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+                      {finding.filePath}
+                      <span className="text-[var(--bp-line)]">:{finding.lineNumber}</span>
+                    </p>
                   </div>
-                  <p className="truncate bp-mono text-[11px] text-[var(--bp-ink-dim)]">
-                    {finding.filePath.split('/').slice(-2).join('/')}
-                  </p>
-                  <span className="hidden truncate bp-mono text-[10px] text-[var(--bp-ink-dim)] md:block">
+                  <span className="hidden truncate pt-0.5 bp-mono text-[10px] text-[var(--bp-ink-dim)] md:block">
                     {CATEGORY_LABELS[finding.category] ?? finding.category}
                   </span>
                 </button>

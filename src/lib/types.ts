@@ -1,3 +1,5 @@
+import type { RepoStructure } from "./structure";
+
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
 export type Confidence = "high" | "medium" | "low";
@@ -111,6 +113,8 @@ export interface Report {
   findings: Finding[];
   riskPaths: RiskPath[];
   markdown: string;
+  /** Folder layout from the full file tree; absent on reports saved before it existed. */
+  structure?: RepoStructure;
 }
 
 export interface ScanRequest {

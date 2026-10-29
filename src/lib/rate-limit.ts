@@ -216,6 +216,8 @@ export const AUTH_RATE_LIMITS = {
   perAccount: { limit: 8, windowSeconds: 15 * 60 },
   /** Account creation from one IP — blunts automated signup abuse. */
   signupPerIp: { limit: 5, windowSeconds: 60 * 60 },
+  /** Reset emails from one IP — stops the endpoint being used to spam inboxes. */
+  recoverPerIp: { limit: 5, windowSeconds: 60 * 60 },
 } as const;
 
 const CONCURRENCY_TTL_SECONDS = 60 * 10; // safety valve: stuck jobs self-release after 10 min

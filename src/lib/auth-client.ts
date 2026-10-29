@@ -70,8 +70,39 @@ export async function signUp(email: string, password: string): Promise<boolean> 
   return Boolean(data.authenticated);
 }
 
+/** Email a password-reset link. Resolves the same way whether or not the account exists. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await postAuth('/api/auth/recover', { email }, 'Could not send the reset email.');
+}
+
+/** Set a new password using the session the recovery link created. */
+export async function setNewPassword(password: string): Promise<void> {
+  await postAuth('/api/auth/password', { password }, 'Could not update the password.');
+}
+
+/**
+ * Where to send the user after signing in. Only same-origin paths are accepted,
+ * so `?next=` cannot be used to bounce someone to another site.
+ */
+export function safeNext(raw: string | null | undefined, fallback = '/dashboard'): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return fallback;
+  // Browsers drop tabs/newlines in URLs, which would turn "/\t/evil.com" into "//evil.com".
+  if (/[\u0000-\u001f]/.test(raw)) return fallback;
+  return raw;
+}
+
+let sessionInFlight: Promise<SessionState> | null = null;
+
+/** Concurrent callers (rail, shell, page) share one request. */
+export function fetchSession(): Promise<SessionState> {
+  sessionInFlight ??= readSession().finally(() => {
+    sessionInFlight = null;
+  });
+  return sessionInFlight;
+}
+
 /** Read the current session from the server. */
-export async function fetchSession(): Promise<SessionState> {
+async function readSession(): Promise<SessionState> {
   try {
     const res = await fetch('/api/auth/session', { credentials: 'same-origin', cache: 'no-store' });
     if (!res.ok) return { authenticated: false };
@@ -148,7 +179,15 @@ export function signInWithGoogle(redirectPath = '/dashboard'): void {
  *
  * Returns true when a session was established.
  */
-export async function captureOAuthRedirect(): Promise<boolean> {
+let capturePromise: Promise<boolean> | null = null;
+
+/** Memoised so SessionBoot and a page that needs the result share one exchange. */
+export function captureOAuthRedirect(): Promise<boolean> {
+  capturePromise ??= exchangeRedirectFragment();
+  return capturePromise;
+}
+
+async function exchangeRedirectFragment(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
   const hash = window.location.hash;

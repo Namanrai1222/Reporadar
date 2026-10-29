@@ -87,6 +87,56 @@ export function refreshAccessToken(refreshToken: string) {
   );
 }
 
+/**
+ * Email a password-recovery link. GoTrue answers 200 whether or not the account
+ * exists, so this never reveals which emails are registered.
+ */
+export async function requestPasswordRecovery(email: string, redirectTo: string): Promise<void> {
+  await gotrue(
+    `/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`,
+    { email },
+    "Could not send the reset email.",
+  );
+}
+
+/** Set a new password for the user that owns `accessToken` (a recovery-link session). */
+export async function updatePassword(accessToken: string, password: string): Promise<void> {
+  const { supabaseUrl, supabaseAnonKey } = requireSupabaseConfig();
+
+  let response: Response;
+  try {
+    response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}`, apikey: supabaseAnonKey },
+      body: JSON.stringify({ password }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    throw new AppError("AUTH_UPSTREAM_UNREACHABLE", "Could not reach the authentication service.", 502);
+  }
+
+  if (!response.ok) {
+    const status = response.status >= 500 ? 502 : response.status === 401 ? 401 : 400;
+    throw new AppError("AUTH_FAILED", await readError(response, "Could not update the password."), status);
+  }
+}
+
+/** True when GoTrue answers at all — used by the health probe. */
+export async function isAuthReachable(): Promise<boolean> {
+  try {
+    const { supabaseUrl, supabaseAnonKey } = requireSupabaseConfig();
+    const response = await fetch(`${supabaseUrl}/auth/v1/health`, {
+      headers: { apikey: supabaseAnonKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** OAuth providers the app has sign-in buttons for. */
 export const SUPPORTED_OAUTH_PROVIDERS = ["github", "google"] as const;
 export type OAuthProvider = (typeof SUPPORTED_OAUTH_PROVIDERS)[number];
@@ -137,7 +187,9 @@ export async function getEnabledOAuthProviders(): Promise<Record<OAuthProvider, 
       SUPPORTED_OAUTH_PROVIDERS.map((p) => [p, external[p] === true]),
     ) as Record<OAuthProvider, boolean>;
   } catch {
-    return allEnabled;
+    // GoTrue unreachable: every provider would dead-end on a browser error page.
+    // Not cached, so buttons come back as soon as the service does.
+    return Object.fromEntries(SUPPORTED_OAUTH_PROVIDERS.map((p) => [p, false])) as Record<OAuthProvider, boolean>;
   }
 
   providerCache = { value, expiresAt: now + PROVIDER_CACHE_MS };

@@ -189,11 +189,11 @@ export async function fetchPublicGitHubRepo(githubUrl: string, requestedBranch?:
     );
 
     for (const [index, content] of contents.entries()) {
-      if (totalBytes >= SECURITY_LIMITS.maxTotalDownloadedBytes) {
+      const size = Buffer.byteLength(content, "utf8");
+      if (totalBytes + size > SECURITY_LIMITS.maxTotalDownloadedBytes) {
         budgetExhausted = true;
         break;
       }
-      const size = Buffer.byteLength(content, "utf8");
       totalBytes += size;
       files.push({
         path: normalizeRepoPath(batch[index].path),
@@ -207,6 +207,10 @@ export async function fetchPublicGitHubRepo(githubUrl: string, requestedBranch?:
   return {
     repo: identity,
     treeCount: treeData.tree.length,
+    // Every file path (not contents) for the architecture map; vendored/build output excluded.
+    paths: treeData.tree
+      .filter((item) => item.type === "blob" && !isIgnored(item.path))
+      .map((item) => normalizeRepoPath(item.path)),
     files,
     truncated: treeData.truncated,
   };

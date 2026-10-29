@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RepoRadar
+
+RepoRadar is an AI-assisted GitHub repository intelligence and security analysis
+app. It fetches public GitHub repositories, runs deterministic static-analysis
+checks first, then uses an LLM provider only to summarize those findings.
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies and run the development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Local mode works without keys: demo scans run, anonymous scans are limited, and
+LLM synthesis falls back to deterministic mock output.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Production Setup
 
-## Learn More
+For accounts, scan history, saved reports, and queued production scans, configure:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+NEXT_PUBLIC_APP_URL=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+REDIS_REST_URL=
+REDIS_REST_TOKEN=
+SCAN_WORKER_SECRET=
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Optional providers:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+GITHUB_TOKEN=
+GROQ_API_KEY=
+OPENROUTER_API_KEY=
+OLLAMA_BASE_URL=
+```
 
-## Deploy on Vercel
+Run `supabase/schema.sql` in Supabase, then schedule a worker to call:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+curl -X POST "$NEXT_PUBLIC_APP_URL/api/scans/worker" \
+  -H "Authorization: Bearer $SCAN_WORKER_SECRET"
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Validation
+
+```bash
+npm run lint
+npm run typecheck
+npm run test:unit
+```

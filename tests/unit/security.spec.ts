@@ -7,6 +7,9 @@ import {
   securityHeaders,
 } from "../../src/lib/security";
 import { assertSameOrigin, readAccessToken, ACCESS_COOKIE } from "../../src/lib/session";
+import { buildReport } from "../../src/lib/report";
+import { routeFromFile, routeMatches } from "../../src/lib/scanners";
+import { safeNext } from "../../src/lib/auth-client";
 
 /* ------------------------------------------------------------------ SSRF ---- */
 
@@ -245,6 +248,45 @@ test.describe("assertSameOrigin", () => {
   });
 });
 
+/* ------------------------------------------------------------ scan output ---- */
+
+test.describe("report generation", () => {
+  test("does not seed demo findings for a real repository with no downloaded files", () => {
+    const report = buildReport(
+      {
+        owner: "owner",
+        name: "repo",
+        branch: "main",
+        url: "https://github.com/owner/repo",
+      },
+      [],
+      "security-lens",
+      42,
+    );
+
+    expect(report.findings).toHaveLength(0);
+    expect(report.coverage.filesFound).toBe(42);
+    expect(report.coverage.filesAnalyzed).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------ route mapper ---- */
+
+test.describe("route mapping", () => {
+  test("maps src app and pages API route files to public API paths", () => {
+    expect(routeFromFile("src/app/api/users/[id]/route.ts")).toBe("/api/users/[id]");
+    expect(routeFromFile("app/api/reports/[id]/export/route.ts")).toBe("/api/reports/[id]/export");
+    expect(routeFromFile("src/pages/api/search.ts")).toBe("/api/search");
+  });
+
+  test("matches dynamic and catch-all route segments", () => {
+    expect(routeMatches("/api/users/[id]", "/api/users/123")).toBe(true);
+    expect(routeMatches("/api/reports/[id]/export", "/api/reports/abc/export")).toBe(true);
+    expect(routeMatches("/api/docs/[...slug]", "/api/docs/a/b/c")).toBe(true);
+    expect(routeMatches("/api/users/[id]", "/api/users/123/posts")).toBe(false);
+  });
+});
+
 /* -------------------------------------------------------------- cookies ---- */
 
 test.describe("readAccessToken", () => {
@@ -267,5 +309,22 @@ test.describe("readAccessToken", () => {
       headers: { cookie: `not_${ACCESS_COOKIE}=attacker-value` },
     });
     expect(readAccessToken(request)).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------- open redirect ---- */
+
+test.describe("safeNext — post-sign-in redirect", () => {
+  test("keeps same-origin paths, including their query", () => {
+    expect(safeNext("/dashboard?repo=https%3A%2F%2Fgithub.com%2Fa%2Fb")).toBe(
+      "/dashboard?repo=https%3A%2F%2Fgithub.com%2Fa%2Fb",
+    );
+    expect(safeNext("/report/abc/findings")).toBe("/report/abc/findings");
+  });
+
+  test("falls back for missing or off-site targets", () => {
+    for (const raw of [null, "", "https://evil.example", "//evil.example", "/\\evil.example", "/\t/evil.example", "javascript:alert(1)"]) {
+      expect(safeNext(raw)).toBe("/dashboard");
+    }
   });
 });

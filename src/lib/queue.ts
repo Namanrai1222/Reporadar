@@ -5,6 +5,7 @@ import { getConfig } from "./config";
 export interface QueueJob {
   id: string;
   scanId?: string;
+  userId?: string;
   traceId: string;
   payload: ScanRequest;
 }
@@ -12,6 +13,7 @@ export interface QueueJob {
 export interface QueueAdapter {
   configured: boolean;
   enqueue(job: QueueJob): Promise<{ provider: string; jobId: string }>;
+  dequeue(): Promise<QueueJob | null>;
 }
 
 export function createQueueAdapter(): QueueAdapter {
@@ -24,10 +26,11 @@ export function createQueueAdapter(): QueueAdapter {
   return new InlineDevelopmentQueueAdapter();
 }
 
-export function createQueueJob(payload: ScanRequest, traceId: string, scanId?: string): QueueJob {
+export function createQueueJob(payload: ScanRequest, traceId: string, scanId?: string, userId?: string): QueueJob {
   return {
     id: randomUUID(),
     scanId,
+    userId,
     traceId,
     payload,
   };
@@ -54,6 +57,20 @@ class RedisQueueAdapter implements QueueAdapter {
 
     return { provider: "redis-rest", jobId: job.id };
   }
+
+  async dequeue() {
+    const response = await fetch(`${this.url}/rpop/${encodeURIComponent("reporadar:scan-jobs")}`, {
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) throw new Error("Redis queue pop failed");
+    const payload = (await response.json()) as { result?: string | null };
+    if (!payload.result) return null;
+    return JSON.parse(payload.result) as QueueJob;
+  }
 }
 
 class InlineDevelopmentQueueAdapter implements QueueAdapter {
@@ -62,5 +79,8 @@ class InlineDevelopmentQueueAdapter implements QueueAdapter {
   async enqueue(job: QueueJob) {
     return { provider: "inline-development", jobId: job.id };
   }
-}
 
+  async dequeue() {
+    return null;
+  }
+}

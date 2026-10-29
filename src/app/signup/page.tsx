@@ -1,14 +1,24 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, MailCheck } from 'lucide-react';
 import { AuthShell, Field, FormError, SubmitButton, OAuthButtons } from '@/components/auth/AuthShell';
-import { signUp } from '@/lib/auth-client';
+import { safeNext, signUp } from '@/lib/auth-client';
 
 export default function SignUpPage() {
+  return (
+    <Suspense>
+      <SignUpForm />
+    </Suspense>
+  );
+}
+
+function SignUpForm() {
   const router = useRouter();
+  const next = safeNext(useSearchParams().get('next'));
+  const signinHref = next === '/dashboard' ? '/signin' : `/signin?next=${encodeURIComponent(next)}`;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -33,7 +43,7 @@ export default function SignUpPage() {
     try {
       const active = await signUp(email, password);
       if (active) {
-        router.push('/dashboard');
+        router.push(next);
       } else {
         setConfirmSent(true);
         setLoading(false);
@@ -60,7 +70,7 @@ export default function SignUpPage() {
             </p>
           </div>
           <Link
-            href="/signin"
+            href={signinHref}
             className="flex w-full items-center justify-center gap-2 border border-[var(--bp-line)] px-6 py-3 bp-mono text-[12.5px] tracking-wide text-[var(--bp-ink)] transition-colors hover:bg-[var(--bp-line)] hover:text-[var(--bp-ground)]"
           >
             BACK TO SIGN IN
@@ -78,7 +88,7 @@ export default function SignUpPage() {
       footer="Static analysis only · Source code is never stored."
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <OAuthButtons onError={setError} />
+        <OAuthButtons onError={setError} next={next} />
 
         <div className="flex items-center gap-3 py-1">
           <span className="h-px flex-1 bg-[var(--bp-line-faint)]" />
@@ -130,7 +140,7 @@ export default function SignUpPage() {
 
         <p className="mt-2 bp-mono text-[11.5px] text-[var(--bp-ink-dim)]">
           Already registered?{' '}
-          <Link href="/signin" className="text-[var(--bp-line)] underline-offset-4 hover:underline">
+          <Link href={signinHref} className="text-[var(--bp-line)] underline-offset-4 hover:underline">
             Sign in
           </Link>
         </p>

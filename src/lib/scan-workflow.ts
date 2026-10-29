@@ -1,6 +1,6 @@
 import type { Report, ScanMode, ScanRequest } from "./types";
 import { fetchPublicGitHubRepo } from "./github";
-import { buildReport, demoReport } from "./report";
+import { buildReport, demoReport, refreshReportIdentity } from "./report";
 import { getUserFromRequest } from "./auth";
 import { AppError, getConfig, isSupabaseConfigured } from "./config";
 import { createCacheAdapter, buildReportCacheKey } from "./cache";
@@ -13,7 +13,8 @@ import { createQueueAdapter, createQueueJob } from "./queue";
 import { beginConcurrentJob, clientFingerprint, consumeDailyScan, dailyLimitForPlan, humanizeReset, refundDailyScan } from "./rate-limit";
 
 const MODES: ScanMode[] = ["full-map", "security-lens", "onboarding"];
-const SCANNER_VERSION = "rules-v1";
+// Bumped when report shape changes, so cached reports from before are not reused.
+const SCANNER_VERSION = "rules-v2-structure";
 const PROMPT_VERSION = "synthesis-v1";
 
 export async function createScan(request: Request) {
@@ -105,8 +106,22 @@ export async function createScan(request: Request) {
       : null;
 
     trace.scanId = scan?.id;
-    const queued = await queue.enqueue(createQueueJob(payload, trace.traceId, scan?.id));
+    const queued = await queue.enqueue(createQueueJob(payload, trace.traceId, scan?.id, user?.id));
     emitTelemetry(trace, "scan.queue.enqueued", { provider: queued.provider, jobId: queued.jobId });
+
+    if (queue.configured && user && scan) {
+      scanSucceeded = true;
+      return {
+        report: null,
+        scanId: scan.id,
+        traceId: trace.traceId,
+        queued: true,
+        persisted: true,
+        stages: completedStages(),
+        productNotice:
+          "Your scan is queued for a worker. Source code is never stored; only masked analysis results, metadata, and generated reports can be saved.",
+      };
+    }
 
     const report = await runScanImmediately(payload, user?.id, scan?.id, trace.traceId, outcome);
     scanSucceeded = true;
@@ -171,12 +186,16 @@ async function runScanImmediately(
 
     const cached = await cache.get<Report>(cacheKey);
     if (cached) {
+      const report = refreshReportIdentity(cached);
+      if (userId && scanId && persistence.configured) {
+        await persistCompletedReport(persistence, scanId, userId, report, outcome);
+      }
       emitTelemetry(trace, "scan.cache.hit", { provider: "redis-rest" });
-      return cached;
+      return report;
     }
 
     if (scanId) await persistence.updateScan(scanId, { status: "parsing", stage: "parsing" });
-    const deterministicReport = buildReport(source.repo, source.files, payload.mode, source.treeCount);
+    const deterministicReport = buildReport(source.repo, source.files, payload.mode, source.treeCount, source.paths);
 
     if (scanId) await persistence.updateScan(scanId, { status: "retrieval", stage: "retrieval" });
     const artifacts = retrieveArtifacts(source.files, deterministicReport.findings);
@@ -188,14 +207,7 @@ async function runScanImmediately(
     await cache.set(cacheKey, report, 60 * 60 * 24);
 
     if (userId && scanId && persistence.configured) {
-      await persistence.saveFindings(scanId, userId, report.findings);
-      await persistence.saveReport(scanId, userId, report);
-      outcome.reportPersisted = true;
-      await persistence.updateScan(scanId, {
-        status: "completed",
-        stage: "completed",
-        completed_at: new Date().toISOString(),
-      });
+      await persistCompletedReport(persistence, scanId, userId, report, outcome);
     }
 
     emitTelemetry(trace, "scan.completed", {
@@ -217,6 +229,46 @@ async function runScanImmediately(
     }
     throw error;
   }
+}
+
+export async function runQueuedScanJob() {
+  const queue = createQueueAdapter();
+  if (!queue.configured) {
+    throw new AppError("SERVER_NOT_CONFIGURED", "Redis queue is not configured.", 503);
+  }
+
+  const job = await queue.dequeue();
+  if (!job) {
+    return { processed: false };
+  }
+
+  const outcome = { reportPersisted: false };
+  try {
+    const report = await runScanImmediately(job.payload, job.userId, job.scanId, job.traceId, outcome);
+    return { processed: true, scanId: job.scanId, reportId: report.id, traceId: job.traceId };
+  } catch (error) {
+    if (job.userId && !outcome.reportPersisted) {
+      await refundDailyScan(job.userId, "user");
+    }
+    throw error;
+  }
+}
+
+async function persistCompletedReport(
+  persistence: ReturnType<typeof createPersistenceAdapter>,
+  scanId: string,
+  userId: string,
+  report: Report,
+  outcome: { reportPersisted: boolean },
+) {
+  await persistence.saveFindings(scanId, userId, report.findings);
+  await persistence.saveReport(scanId, userId, report);
+  outcome.reportPersisted = true;
+  await persistence.updateScan(scanId, {
+    status: "completed",
+    stage: "completed",
+    completed_at: new Date().toISOString(),
+  });
 }
 
 export function sanitizeScanPayload(payload: Partial<ScanRequest>): ScanRequest {
@@ -248,4 +300,3 @@ export function completedStages() {
     "completed",
   ];
 }
-
