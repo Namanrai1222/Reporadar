@@ -182,9 +182,11 @@ class SupabasePersistenceAdapter implements PersistenceAdapter {
 
     await this.db.table("findings", {
       method: "POST",
-      prefer: "return=minimal",
+      // Upsert so a retried scan doesn't trip the primary key.
+      prefer: "resolution=merge-duplicates,return=minimal",
       body: findings.map((finding) => ({
-        id: finding.id,
+        // Finding ids are only unique within a scan; the table key is global.
+        id: `${scanId}:${finding.id}`,
         scan_id: scanId,
         user_id: userId,
         rule_id: finding.ruleId,
