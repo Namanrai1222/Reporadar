@@ -23,6 +23,8 @@ export interface RevealProps {
   duration?: number;
   /** re-run every time it enters the viewport */
   repeat?: boolean;
+  /** play on mount instead of on scroll — for above-the-fold content */
+  onMount?: boolean;
   as?: 'div' | 'section' | 'span' | 'li' | 'header' | 'article';
 }
 
@@ -37,6 +39,7 @@ export function Reveal({
   delay = 0,
   duration = 0.7,
   repeat = false,
+  onMount = false,
   as = 'div',
 }: RevealProps) {
   const reduce = useReducedMotion();
@@ -47,8 +50,12 @@ export function Reveal({
     <MotionTag
       className={className}
       initial={{ opacity: 0, x, y, filter: reduce ? 'none' : 'blur(6px)' }}
-      whileInView={{ opacity: 1, x: 0, y: 0, filter: 'blur(0px)' }}
-      viewport={{ once: !repeat, margin: '-12% 0px -12% 0px' }}
+      {...(onMount
+        ? { animate: { opacity: 1, x: 0, y: 0, filter: 'blur(0px)' } }
+        : {
+            whileInView: { opacity: 1, x: 0, y: 0, filter: 'blur(0px)' },
+            viewport: { once: !repeat, margin: '-12% 0px -12% 0px' },
+          })}
       transition={{
         duration: reduce ? 0.2 : duration,
         delay: reduce ? 0 : delay,

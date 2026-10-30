@@ -9,6 +9,18 @@ import * as THREE from 'three';
 const LINE = '#7fb6c9';
 const INK = '#eaf3f6';
 const ALERT = '#f4b45a';
+const GROUND = '#0c151d'; // --bp-ground-2
+// Far enough back that the whole stack, labels included, stays inside the frame.
+const CAM: [number, number, number] = [11, 8.4, 11];
+
+/**
+ * Html labels are sized in CSS px, not canvas px, so on a narrow frame they
+ * overlap and spill out. Scale them with the canvas instead (tuned at 520px).
+ */
+function useLabelScale() {
+  const width = useThree((s) => s.size.width);
+  return 11 * Math.min(1.25, Math.max(0.6, width / 520));
+}
 
 interface LayerDef {
   y: number;
@@ -37,12 +49,13 @@ const NODES: NodeDef[] = [
   { layer: 0, x: -1.2, z: -0.7, s: 0.5 },
   { layer: 0, x: 1.1, z: 0.6, s: 0.5 },
   { layer: 1, x: 0, z: 0, s: 0.62 },
-  { layer: 2, x: -1.0, z: 0.5, s: 0.5 },
-  { layer: 2, x: 1.1, z: -0.6, s: 0.5, alert: true },
+  { layer: 2, x: -1.0, z: 0.5, s: 0.5, alert: true },
+  { layer: 2, x: 1.1, z: -0.6, s: 0.5 },
   { layer: 3, x: 0, z: 0, s: 0.5 },
 ];
 
 function LayerPlane({ layer }: { layer: LayerDef }) {
+  const scale = useLabelScale();
   return (
     <group position={[0, layer.y, 0]}>
       <mesh>
@@ -50,14 +63,18 @@ function LayerPlane({ layer }: { layer: LayerDef }) {
         <meshBasicMaterial color={LINE} transparent opacity={0.03} />
         <Edges color={LINE} />
       </mesh>
-      <Html position={[layer.w / 2 + 0.25, 0.1, layer.d / 2]} distanceFactor={9} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-        <div className="whitespace-nowrap" style={{ transform: 'translateY(-50%)' }}>
-          <div style={{ fontFamily: 'var(--font-jetbrains-mono), monospace', fontSize: 12, color: INK, fontWeight: 500 }}>
+      <Html position={[layer.w / 2 + 0.25, 0.1, layer.d / 2]} distanceFactor={scale} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
+        {/* One line, on a ground-coloured backing, so plane edges never run through the text. */}
+        <div
+          className="flex items-baseline gap-2 whitespace-nowrap"
+          style={{ transform: 'translateY(-50%)', background: GROUND, padding: '1px 5px' }}
+        >
+          <span style={{ fontFamily: 'var(--font-jetbrains-mono), monospace', fontSize: 12, color: INK, fontWeight: 500 }}>
             {layer.label}
-          </div>
-          <div style={{ fontFamily: 'var(--font-jetbrains-mono), monospace', fontSize: 8.5, color: '#9db9c4', letterSpacing: '0.05em' }}>
+          </span>
+          <span style={{ fontFamily: 'var(--font-jetbrains-mono), monospace', fontSize: 9, color: '#9db9c4', letterSpacing: '0.05em' }}>
             {layer.sub}
-          </div>
+          </span>
         </div>
       </Html>
     </group>
@@ -65,6 +82,7 @@ function LayerPlane({ layer }: { layer: LayerDef }) {
 }
 
 function ModuleCube({ node }: { node: NodeDef }) {
+  const scale = useLabelScale();
   const layer = LAYERS[node.layer];
   const c = node.alert ? ALERT : LINE;
   return (
@@ -75,7 +93,7 @@ function ModuleCube({ node }: { node: NodeDef }) {
         <Edges color={c} />
       </mesh>
       {node.alert && (
-        <Html position={[0, node.s + 0.2, 0]} center distanceFactor={9} zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
+        <Html position={[-node.s, node.s * 0.5, 0]} center distanceFactor={scale} zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
           <div
             style={{
               fontFamily: 'var(--font-jetbrains-mono), monospace',
@@ -83,6 +101,9 @@ function ModuleCube({ node }: { node: NodeDef }) {
               letterSpacing: '0.12em',
               color: ALERT,
               whiteSpace: 'nowrap',
+              background: GROUND,
+              border: `1px solid ${ALERT}55`,
+              padding: '1px 5px',
             }}
           >
             ⚠ MISSING AUTH
@@ -121,6 +142,7 @@ function Connectors() {
 
 /** vertical dimension measure with ticks on the left */
 function DimensionMeasure() {
+  const scale = useLabelScale();
   const top = 2.6;
   const bot = -2.7;
   return (
@@ -128,7 +150,7 @@ function DimensionMeasure() {
       <Line points={[[0, top, 0], [0, bot, 0]]} color={LINE} lineWidth={1} transparent opacity={0.6} />
       <Line points={[[-0.12, top, 0], [0.12, top, 0]]} color={LINE} lineWidth={1} transparent opacity={0.6} />
       <Line points={[[-0.12, bot, 0], [0.12, bot, 0]]} color={LINE} lineWidth={1} transparent opacity={0.6} />
-      <Html position={[-0.25, 0, 0]} center distanceFactor={9} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
+      <Html position={[-0.25, 0, 0]} center distanceFactor={scale} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
         <div style={{ fontFamily: 'var(--font-jetbrains-mono), monospace', fontSize: 10, color: LINE, transform: 'rotate(-90deg)' }}>
           760u
         </div>
@@ -143,14 +165,16 @@ function Rig({ pointer, reduce }: { pointer: React.RefObject<{ x: number; y: num
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
     if (group.current) {
-      // Reduced-motion: drop the perpetual auto-rotation term, keep pointer parallax.
-      const targetY = (reduce ? 0 : t * 0.12) + (pointer.current?.x ?? 0) * 0.35;
+      // A slow sway, not a full turn: labels stay on the right and never cross each other.
+      // Reduced-motion: no sway, keep pointer parallax.
+      const targetY = (reduce ? 0 : Math.sin(t * 0.3) * 0.22) + (pointer.current?.x ?? 0) * 0.25;
       group.current.rotation.y += (targetY - group.current.rotation.y) * 0.04;
     }
     // gentle parallax dolly — mutating camera in useFrame is the standard R3F pattern
-    camera.position.x += ((pointer.current?.x ?? 0) * 0.6 - camera.position.x + 7) * 0.03;
-    camera.position.y += (-(pointer.current?.y ?? 0) * 0.5 - camera.position.y + 5.4) * 0.03;
-    camera.lookAt(0, 0, 0);
+    camera.position.x += ((pointer.current?.x ?? 0) * 0.6 - camera.position.x + CAM[0]) * 0.03;
+    camera.position.y += (-(pointer.current?.y ?? 0) * 0.5 - camera.position.y + CAM[1]) * 0.03;
+    // Aim right of centre: labels hang off the right side, so this centres stack + labels together.
+    camera.lookAt(0.8, -0.35, -0.8);
   });
   return (
     <group ref={group}>
@@ -197,7 +221,7 @@ export function Axonometric() {
     >
       <Canvas
         dpr={[1, 1.75]}
-        camera={{ position: [7, 5.4, 7], fov: 24 }}
+        camera={{ position: CAM, fov: 24 }}
         gl={{ antialias: true, alpha: true }}
         style={{ background: 'transparent' }}
       >

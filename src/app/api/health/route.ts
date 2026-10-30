@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { jsonResponse } from "@/lib/api-response";
 import { getConfig, isSupabaseConfigured, isRedisConfigured } from "@/lib/config";
 import { preferredProvider } from "@/lib/llm";
+import { isAuthReachable } from "@/lib/gotrue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,21 +30,28 @@ function authorized(request: Request): boolean {
 }
 
 export async function GET(request: Request) {
+  // Sign-in, scans and history all depend on Supabase, so "ok" while it is down
+  // would hide a full outage. Only the up/down bit is public.
+  const config = getConfig();
+  const authUp = isSupabaseConfigured(config) && (await isAuthReachable());
+  const status = authUp ? "ok" : "degraded";
+  const httpStatus = authUp ? 200 : 503;
+
   if (!authorized(request)) {
-    return jsonResponse({ status: "ok" });
+    return jsonResponse({ status }, httpStatus);
   }
 
-  const config = getConfig();
   return jsonResponse({
-    status: "ok",
+    status,
     service: "reporadar",
     checks: {
       supabase: isSupabaseConfigured(config),
+      supabaseReachable: authUp,
       redis: isRedisConfigured(config),
       llmProvider: preferredProvider().name,
       groqKeys: config.groqApiKeys.length,
       openRouterKeys: config.openRouterApiKeys.length,
       rateLimits: config.rateLimits,
     },
-  });
+  }, httpStatus);
 }

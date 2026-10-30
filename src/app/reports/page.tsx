@@ -25,7 +25,6 @@ export default function ReportsPage() {
   useEffect(() => {
     if (!ready) return;
     let active = true;
-    setView('loading');
     authFetch('/api/saved-reports')
       .then(async (res) => {
         if (!active) return;

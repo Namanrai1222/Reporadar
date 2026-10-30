@@ -1,28 +1,35 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { Report } from './types';
 import { authFetch } from './api-client';
+
+/** Why a report could not be shown: signed out, or no report the user can see. */
+export type ReportProblem = 'auth' | 'missing' | null;
 
 export interface ReportData {
   report: Report | null;
   saved: boolean;
   loading: boolean;
+  problem: ReportProblem;
 }
 
+type Loaded = { report: Report | null; saved: boolean; problem: ReportProblem };
+
 /** Module-level de-dupe so the report layout and page share a single fetch per id. */
-const cache = new Map<string, Promise<{ report: Report | null; saved: boolean }>>();
+const cache = new Map<string, Promise<Loaded>>();
 
 function load(id: string) {
   let pending = cache.get(id);
   if (!pending) {
     pending = authFetch(`/api/reports/${encodeURIComponent(id)}`)
       .then(async (res) => {
-        if (!res.ok) return { report: null, saved: false };
+        if (res.status === 401) return { report: null, saved: false, problem: 'auth' as const };
+        if (!res.ok) return { report: null, saved: false, problem: 'missing' as const };
         const data = (await res.json()) as { report?: Report; saved?: boolean };
-        return { report: data.report ?? null, saved: Boolean(data.saved) };
+        return { report: data.report ?? null, saved: Boolean(data.saved), problem: data.report ? null : ('missing' as const) };
       })
-      .catch(() => ({ report: null, saved: false }))
+      .catch(() => ({ report: null, saved: false, problem: 'missing' as const }))
       .finally(() => {
         // De-dupe only concurrent in-flight callers; later mounts must re-fetch
         // so failures can recover and saved-state changes aren't served stale.
@@ -42,10 +49,11 @@ function load(id: string) {
  * access logs and `Referer` headers, and let the contents be rewritten by editing
  * the address bar.
  */
-export function useReportData(reportId: string): ReportData {
-  const [fetched, setFetched] = useState<{ id: string; report: Report | null; saved: boolean } | null>(null);
+export function useFetchedReport(reportId: string | null): ReportData {
+  const [fetched, setFetched] = useState<({ id: string } & Loaded) | null>(null);
 
   useEffect(() => {
+    if (!reportId) return;
     let active = true;
     // setState only in the async callback (never synchronously in the effect body).
     load(reportId).then((result) => {
@@ -62,5 +70,15 @@ export function useReportData(reportId: string): ReportData {
     report: current ? current.report : null,
     saved: current ? current.saved : false,
     loading: current === null,
+    problem: current ? current.problem : null,
   };
+}
+
+/** Provided by the report layout so every tab reads one fetch instead of its own. */
+export const ReportContext = createContext<({ id: string } & ReportData) | null>(null);
+
+export function useReportData(reportId: string): ReportData {
+  const shared = useContext(ReportContext);
+  const own = useFetchedReport(shared?.id === reportId ? null : reportId);
+  return shared?.id === reportId ? shared : own;
 }

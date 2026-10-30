@@ -52,3 +52,6 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# per-machine Claude Code settings
+.claude/settings.local.json

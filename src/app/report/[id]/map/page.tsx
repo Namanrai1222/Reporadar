@@ -4,7 +4,9 @@ import { useParams } from 'next/navigation';
 import { useReportData } from '@/lib/use-report';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Report, CodeNode } from '@/lib/types';
-import { X, FileCode, Globe, Database, Link2, Server, Leaf, Map as MapIcon } from 'lucide-react';
+import { X, FileCode, Globe, Database, Link2, Server, Leaf, Map as MapIcon, Radar, Workflow } from 'lucide-react';
+import { ArchitectureMap } from '@/components/report/ArchitectureMap';
+import { reportStructure } from '@/lib/structure';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 
 // Report is always fetched by id; contents never travel in the URL.
@@ -32,6 +34,9 @@ interface GraphNode {
   node: CodeNode;
 }
 
+const NODE_W = 200;
+const NODE_H = 40;
+
 function buildLayout(nodes: CodeNode[]): GraphNode[] {
   const layerMap: Record<string, number> = { client: 0, application: 1, external: 2, data: 3 };
   const layerGroups: Record<number, CodeNode[]> = { 0: [], 1: [], 2: [], 3: [] };
@@ -42,19 +47,19 @@ function buildLayout(nodes: CodeNode[]): GraphNode[] {
   }
 
   const result: GraphNode[] = [];
-  const LAYER_X = [80, 340, 600, 860];
-  const NODE_HEIGHT = 64;
-  const PADDING = 20;
+  const COLUMN_GAP = 90;
+  const ROW_GAP = 24;
 
   for (let layer = 0; layer < 4; layer++) {
     const group = layerGroups[layer];
-    const totalH = group.length * NODE_HEIGHT + (group.length - 1) * PADDING;
-    const startY = 200 - totalH / 2;
+    const totalH = group.length * NODE_H + (group.length - 1) * ROW_GAP;
+    // Columns are centred on y=0; the viewBox fits whatever height results,
+    // so tall columns never clamp onto each other.
     group.forEach((node, i) => {
       result.push({
         id: node.id,
-        x: LAYER_X[layer],
-        y: Math.max(20, startY + i * (NODE_HEIGHT + PADDING)),
+        x: layer * (NODE_W + COLUMN_GAP),
+        y: -totalH / 2 + i * (NODE_H + ROW_GAP),
         node,
       });
     });
@@ -62,7 +67,84 @@ function buildLayout(nodes: CodeNode[]): GraphNode[] {
   return result;
 }
 
-export default function CodeMapPage() {
+/**
+ * viewBox around the drawing. At least the canvas's own pixel size, so a small
+ * graph renders 1:1 instead of being blown up, and a large one shrinks to fit.
+ */
+function fitViewBox(graph: GraphNode[], canvas: { w: number; h: number }): string {
+  if (graph.length === 0) return `0 0 ${canvas.w} ${canvas.h}`;
+  const xs = graph.map((n) => n.x);
+  const ys = graph.map((n) => n.y);
+  const minX = Math.min(...xs) - 48;
+  const minY = Math.min(...ys) - 48;
+  const w = Math.max(...xs) + NODE_W + 48 - minX;
+  const h = Math.max(...ys) + NODE_H + 48 - minY;
+  const vw = Math.max(w, canvas.w);
+  const vh = Math.max(h, canvas.h);
+  return `${minX - (vw - w) / 2} ${minY - (vh - h) / 2} ${vw} ${vh}`;
+}
+
+export default function MapPage() {
+  const params = useParams<{ id: string }>();
+  const { report, loading } = useReportData(params.id);
+  const [view, setView] = useState<'architecture' | 'flow'>('architecture');
+
+  const mapped = useMemo(() => report && reportStructure(report), [report]);
+  const structure = mapped?.structure;
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center bp-mono text-[13px] text-[var(--bp-ink-dim)]">
+        Loading report…
+      </div>
+    );
+  }
+  if (!report || !structure) return null; // the report shell shows why
+
+  const hasFlow = report.nodes.length > 0;
+  const tabs = [
+    { id: 'architecture' as const, label: 'Architecture', icon: Radar, enabled: true },
+    { id: 'flow' as const, label: 'Code flow', icon: Workflow, enabled: hasFlow },
+  ];
+
+  return (
+    <div className="-mx-5 flex flex-col md:-mx-6 lg:h-[calc(100vh-190px)] lg:min-h-[600px]">
+      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--bp-line-faint)] px-5 py-2.5 md:px-6">
+        <div role="tablist" aria-label="Map view" className="flex border border-[var(--bp-line-faint)]">
+          {tabs.map(({ id, label, icon: Icon, enabled }) => (
+            <button
+              key={id}
+              role="tab"
+              type="button"
+              aria-selected={view === id}
+              disabled={!enabled}
+              title={enabled ? undefined : 'No routes, pages or env usage detected in this repository'}
+              onClick={() => setView(id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 bp-mono text-[11.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                view === id
+                  ? 'bg-[color-mix(in_oklab,var(--bp-line)_14%,transparent)] text-[var(--bp-ink)]'
+                  : 'text-[var(--bp-ink-dim)] hover:text-[var(--bp-ink)]'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+          {view === 'architecture' ? 'FIG.03 — Repository radar · every folder, flagged or not' : 'FIG.04 — Pages, routes and env usage'}
+        </p>
+      </div>
+      {view === 'flow' && hasFlow ? (
+        <CodeFlow />
+      ) : (
+        <ArchitectureMap report={report} structure={structure} partial={mapped!.partial} />
+      )}
+    </div>
+  );
+}
+
+function CodeFlow() {
   const params = useParams<{ id: string }>();
   const reportData = useReportData(params.id);
   const report: Report | null = reportData.report;
@@ -79,12 +161,16 @@ export default function CodeMapPage() {
 
   const graphNodes = useMemo(() => buildLayout(nodes), [nodes]);
   const nodeMap = useMemo(() => Object.fromEntries(graphNodes.map((n) => [n.id, n])), [graphNodes]);
+  const [canvas, setCanvas] = useState({ w: 900, h: 420 });
+  const viewBox = useMemo(() => fitViewBox(graphNodes, canvas), [graphNodes, canvas]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if ((e.target as SVGElement).closest('[data-node]')) return;
       setDragging(true);
-      setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
+      // Pointer moves in screen px; the drawing lives in viewBox units.
+      const k = svgRef.current?.getScreenCTM()?.a ?? 1;
+      setDragStart({ x: e.clientX - transform.x * k, y: e.clientY - transform.y * k });
     },
     [transform],
   );
@@ -92,7 +178,8 @@ export default function CodeMapPage() {
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!dragging) return;
-      setTransform((t) => ({ ...t, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
+      const k = svgRef.current?.getScreenCTM()?.a ?? 1;
+      setTransform((t) => ({ ...t, x: (e.clientX - dragStart.x) / k, y: (e.clientY - dragStart.y) / k }));
     },
     [dragging, dragStart],
   );
@@ -109,8 +196,16 @@ export default function CodeMapPage() {
     const svg = svgRef.current;
     if (!svg) return;
     svg.addEventListener('wheel', handleWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', handleWheel);
-  }, [handleWheel]);
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width && height) setCanvas({ w: Math.round(width), h: Math.round(height) });
+    });
+    observer.observe(svg);
+    return () => {
+      svg.removeEventListener('wheel', handleWheel);
+      observer.disconnect();
+    };
+  }, [handleWheel, report]);
 
   const selectedNodeRelatedFindings =
     report?.findings.filter((f) => f.relatedNodeIds.includes(selectedNode?.id ?? '')) ?? [];
@@ -132,20 +227,10 @@ export default function CodeMapPage() {
   }
 
   return (
-    <div className="-mx-5 flex h-[calc(100vh-190px)] overflow-hidden md:-mx-6">
+    <div className="flex h-[70vh] min-h-0 flex-1 overflow-hidden lg:h-auto">
       {/* Canvas — yields to the inspector on mobile (matches findings-page pattern) */}
-      <div className={`bp-paper relative flex-1 overflow-hidden ${selectedNode ? 'hidden sm:block' : ''}`}>
-        {/* Legend */}
-        <div className="absolute left-4 top-4 z-10 border border-[var(--bp-line-faint)] bg-[color-mix(in_oklab,var(--bp-ground-2)_88%,transparent)] p-3 backdrop-blur-sm">
-          <p className="bp-label mb-2">Node types</p>
-          {TYPE_LEGEND.map(([label, color]) => (
-            <div key={label} className="mb-1 flex items-center gap-2 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
-              <span className="h-2 w-2" style={{ background: color }} />
-              {label}
-            </div>
-          ))}
-        </div>
-
+      <div className={`relative flex-1 flex-col overflow-hidden ${selectedNode ? 'hidden sm:flex' : 'flex'}`}>
+        <div className="bp-paper relative flex-1 overflow-hidden">
         {/* Controls */}
         <div className="absolute right-4 top-4 z-10 flex flex-col gap-2">
           <button
@@ -158,6 +243,10 @@ export default function CodeMapPage() {
 
         <svg
           ref={svgRef}
+          viewBox={viewBox}
+          preserveAspectRatio="xMidYMid meet"
+          role="group"
+          aria-label="Code map"
           className="h-full w-full"
           style={{ cursor: dragging ? 'grabbing' : 'grab' }}
           onMouseDown={handleMouseDown}
@@ -176,15 +265,15 @@ export default function CodeMapPage() {
               return (
                 <g key={i} opacity={dim ? 0.2 : 1}>
                   <path
-                    d={`M ${from.x + 100} ${from.y + 20} C ${from.x + 180} ${from.y + 20}, ${to.x - 80} ${to.y + 20}, ${to.x} ${to.y + 20}`}
+                    d={`M ${from.x + NODE_W} ${from.y + NODE_H / 2} C ${from.x + NODE_W + 60} ${from.y + NODE_H / 2}, ${to.x - 60} ${to.y + NODE_H / 2}, ${to.x} ${to.y + NODE_H / 2}`}
                     fill="none"
                     stroke={isRisky ? 'var(--bp-critical)' : 'var(--bp-line-soft)'}
                     strokeWidth={isRisky ? 1.5 : 1}
                     strokeDasharray={isRisky ? '5 4' : undefined}
                   />
                   <text
-                    x={(from.x + 100 + to.x) / 2}
-                    y={Math.min(from.y, to.y) + 14}
+                    x={(from.x + NODE_W + to.x) / 2}
+                    y={(from.y + to.y) / 2 + NODE_H / 2 - 6}
                     fill="var(--bp-ink-dim)"
                     fontSize="9"
                     textAnchor="middle"
@@ -217,14 +306,28 @@ export default function CodeMapPage() {
                   data-node="true"
                   transform={`translate(${x}, ${y})`}
                   style={{ cursor: 'pointer' }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${config.label}: ${node.label}`}
+                  aria-pressed={isSelected}
+                  className="outline-none [&:focus-visible>rect:first-of-type]:stroke-[var(--bp-line)]"
                   onClick={() => setSelectedNode(isSelected ? null : node)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedNode(isSelected ? null : node);
+                    }
+                  }}
+                  onFocus={() => setHoveredNode(id)}
+                  onBlur={() => setHoveredNode(null)}
                   onMouseEnter={() => setHoveredNode(id)}
                   onMouseLeave={() => setHoveredNode(null)}
                   opacity={hoveredNode && !isHovered && !isSelected ? 0.45 : 1}
                 >
+                  <title>{node.filePath ?? node.label}</title>
                   <rect
-                    width={160}
-                    height={40}
+                    width={NODE_W}
+                    height={NODE_H}
                     fill={isSelected ? 'color-mix(in oklab, var(--bp-line) 10%, var(--bp-ground-2))' : 'var(--bp-ground-2)'}
                     stroke={stroke}
                     strokeWidth={isSelected || hasRisk ? 1.5 : 1}
@@ -232,9 +335,9 @@ export default function CodeMapPage() {
                   {/* corner ticks */}
                   {[
                     [0, 0],
-                    [160, 0],
-                    [0, 40],
-                    [160, 40],
+                    [NODE_W, 0],
+                    [0, NODE_H],
+                    [NODE_W, NODE_H],
                   ].map(([cx, cy], k) => (
                     <g key={k} stroke={stroke} strokeWidth="1">
                       <line x1={cx - 3} y1={cy} x2={cx + 3} y2={cy} />
@@ -243,14 +346,14 @@ export default function CodeMapPage() {
                   ))}
                   {hasRisk && (
                     <rect
-                      x={152}
+                      x={NODE_W - 8}
                       y={0}
                       width={4}
                       height={4}
                       fill={node.riskLevel === 'critical' ? 'var(--bp-critical)' : 'var(--bp-alert)'}
                     />
                   )}
-                  <foreignObject x={8} y={8} width={144} height={24}>
+                  <foreignObject x={8} y={8} width={NODE_W - 16} height={24}>
                     <div className="flex items-center gap-2 overflow-hidden">
                       <span
                         className="grid h-5 w-5 shrink-0 place-items-center border"
@@ -278,6 +381,21 @@ export default function CodeMapPage() {
             </div>
           </div>
         )}
+        </div>
+
+        {/* Key — a strip under the drawing, so it never covers nodes */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--bp-line-faint)] bg-[var(--bp-ground-2)] px-4 py-2.5">
+          <span className="bp-label">Key</span>
+          {TYPE_LEGEND.map(([label, color]) => (
+            <span key={label} className="flex items-center gap-1.5 bp-mono text-[11px] text-[var(--bp-ink-dim)]">
+              <span className="h-2 w-2" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+          <span className="ml-auto hidden bp-mono text-[10.5px] text-[var(--bp-ink-dim)] sm:inline">
+            Drag to pan · scroll to zoom · Tab to step through nodes
+          </span>
+        </div>
       </div>
 
       {/* Inspector */}

@@ -1,6 +1,9 @@
 import type { CodeEdge, CodeNode, Finding, RepoFile } from "./types";
 import { maskEvidence, normalizeRepoPath } from "./security";
 
+// One per finding category analyzeFiles can emit; keep in sync when adding a rule.
+export const SCANNER_COUNT = 8;
+
 const SECRET_PATTERNS = [
   /sk-(live|test|proj)-[A-Za-z0-9_-]{12,}/,
   /ghp_[A-Za-z0-9]{20,}/,
@@ -15,7 +18,7 @@ const SECRET_PATTERNS = [
 
 const ENV_USAGE = /(?:process\.env\.|import\.meta\.env\.)([A-Z0-9_]+)/g;
 const FRONTEND_FILE = /(app|pages|components|src\/components|src\/app).*\.(tsx|jsx|ts|js)$/;
-const ROUTE_FILE = /(app\/api\/.*\/route\.(ts|js)|pages\/api\/.*\.(ts|js)|server\/routes\/.*\.(ts|js))/;
+const ROUTE_FILE = /((?:src\/)?app\/api\/.*\/route\.(ts|js)|(?:src\/)?pages\/api\/.*\.(ts|js)|server\/routes\/.*\.(ts|js))/;
 const FETCH_CALL = /(?:fetch|axios\.(?:get|post|put|patch|delete))\(\s*["'`]([^"'`]+)["'`]/g;
 
 export function analyzeFiles(files: RepoFile[]) {
@@ -136,7 +139,7 @@ export function analyzeFiles(files: RepoFile[]) {
   }
 
   for (const call of frontendCalls) {
-    const matched = [...routes.keys()].some((route) => route === call.route || route.replace(/\[.+?\]/g, ":param") === call.route);
+    const matched = [...routes.keys()].some((route) => routeMatches(route, call.route));
     edges.push({
       from: `file:${call.filePath}`,
       to: `route:${call.route}`,
@@ -307,16 +310,49 @@ function isEnvExample(path: string) {
   return /(^|\/)\.env\.(example|sample)$|(^|\/)env\.example$/i.test(path);
 }
 
-function routeFromFile(path: string) {
-  if (path.startsWith("app/api/")) {
-    return `/${path.replace(/^app\/api\//, "api/").replace(/\/route\.(ts|js)$/, "")}`;
+export function routeFromFile(path: string) {
+  if (/^(?:src\/)?app\/api\//.test(path)) {
+    const route = path.replace(/^(?:src\/)?app\/api\//, "").replace(/\/?route\.(ts|js)$/, "");
+    return cleanRoute(`/api/${route}`);
   }
 
-  if (path.startsWith("pages/api/")) {
-    return `/${path.replace(/^pages\//, "").replace(/\.(ts|js)$/, "")}`;
+  if (/^(?:src\/)?pages\/api\//.test(path)) {
+    return cleanRoute(`/${path.replace(/^(?:src\/)?pages\//, "").replace(/\.(ts|js)$/, "")}`);
   }
 
-  return `/${path.replace(/\.(ts|js)$/, "")}`;
+  return cleanRoute(`/${path.replace(/\.(ts|js)$/, "")}`);
+}
+
+export function routeMatches(definedRoute: string, calledRoute: string) {
+  const definedSegments = splitRoute(definedRoute);
+  const calledSegments = splitRoute(calledRoute);
+
+  for (let index = 0; index < definedSegments.length; index += 1) {
+    const defined = definedSegments[index];
+    const called = calledSegments[index];
+
+    if (/^\[\[\.\.\..+\]\]$/.test(defined)) return true;
+    if (/^\[\.\.\..+\]$/.test(defined)) return calledSegments.length > index;
+    if (called === undefined) return false;
+    if (/^\[.+\]$/.test(defined)) continue;
+    if (defined !== called) return false;
+  }
+
+  return definedSegments.length === calledSegments.length;
+}
+
+function splitRoute(route: string) {
+  return cleanRoute(route.split("?")[0] ?? "")
+    .split("/")
+    .filter(Boolean);
+}
+
+function cleanRoute(route: string) {
+  const segments = route
+    .split("/")
+    .filter((segment) => segment && !/^\(.+\)$/.test(segment))
+    .join("/");
+  return `/${segments}`.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
 }
 
 function readableFileLabel(path: string) {
@@ -331,4 +367,3 @@ function firstLine(content: string, pattern: RegExp) {
 function severityWeight(severity: Finding["severity"]) {
   return { critical: 5, high: 4, medium: 3, low: 2, info: 1 }[severity];
 }
-

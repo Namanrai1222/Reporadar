@@ -11,6 +11,9 @@ const navItems = [
   { href: '/reports', icon: FolderOpen, label: 'Saved Reports', code: '03' },
 ];
 
+// Mobile reaches Settings from its top bar, so only the desktop rail lists it.
+const railItems = [...navItems, { href: '/settings', icon: Settings, label: 'Settings', code: '04' }];
+
 export function GlobalRail() {
   const pathname = usePathname();
   const { ready, authenticated, email, signOut } = useAuth();
@@ -28,7 +31,7 @@ export function GlobalRail() {
 
         <div className="flex flex-1 flex-col gap-px p-3 pt-4">
           <p className="bp-label mb-2 px-2">Navigation</p>
-          {navItems.map(({ href, icon: Icon, label, code }) => {
+          {railItems.map(({ href, icon: Icon, label, code }) => {
             const active = isActive(href);
             return (
               <Link

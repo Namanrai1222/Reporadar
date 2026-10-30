@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Radar, GitBranch, ArrowRight, Lock, Map, BookOpen, Shield, Sparkles,
   Clock, Key, Link2, Leaf, FileText, AlertTriangle,
@@ -44,6 +44,12 @@ const EXAMPLE_REPOS = [
   'https://github.com/shadcn-ui/ui',
 ];
 
+/** Sign-in link that brings the visitor back to this form with their repo still filled in. */
+function signinHref(repo: string) {
+  const back = repo.trim() ? `/dashboard?repo=${encodeURIComponent(repo.trim())}` : '/dashboard';
+  return `/signin?next=${encodeURIComponent(back)}`;
+}
+
 interface RecentScan {
   id: string;
   name: string;
@@ -63,8 +69,18 @@ const DETECTS = [
 ];
 
 export default function HomePage() {
+  return (
+    <Suspense>
+      <NewScan />
+    </Suspense>
+  );
+}
+
+function NewScan() {
   const router = useRouter();
-  const [githubUrl, setGithubUrl] = useState('');
+  // Prefilled from the landing-page input (or a return from sign-in).
+  const searchParams = useSearchParams();
+  const [githubUrl, setGithubUrl] = useState(() => searchParams.get('repo') ?? '');
   const [branch, setBranch] = useState('');
   const [mode, setMode] = useState<'full-map' | 'security-lens' | 'onboarding'>('full-map');
   const [loading, setLoading] = useState(false);
@@ -133,14 +149,14 @@ export default function HomePage() {
       // rather than showing a dead-end error. Checked before parsing, since a 401
       // is about the request rather than its body.
       if (res.status === 401) {
-        router.push('/signin');
+        router.push(signinHref(targetUrl));
         return;
       }
 
       // A dropped or truncated response leaves an empty body, which used to
       // surface verbatim as "Unexpected end of JSON input" — a parser message
       // with nothing in it for the user to act on.
-      let data: { report?: { id: string }; error?: string } | null = null;
+      let data: { report?: { id: string } | null; scanId?: string; queued?: boolean; error?: string } | null = null;
       try {
         data = await res.json();
       } catch {
@@ -152,12 +168,21 @@ export default function HomePage() {
       }
 
       if (!res.ok) throw new Error(data?.error || 'Scan failed.');
-      if (!data?.report?.id) throw new Error('The scan completed but returned no report.');
 
       // Navigate by id only. The report is already persisted server-side, so the
       // report page fetches it through an authorisation-checked endpoint instead of
       // carrying findings and masked secrets through the address bar.
-      router.push(`/report/${encodeURIComponent(data.report.id)}`);
+      if (data?.report?.id) {
+        router.push(`/report/${encodeURIComponent(data.report.id)}`);
+        return;
+      }
+
+      if (data?.queued && data.scanId) {
+        router.push(`/scan?id=${encodeURIComponent(data.scanId)}&repo=${encodeURIComponent(targetUrl)}`);
+        return;
+      }
+
+      throw new Error('The scan started but returned no report or status id.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Scan failed. Please try again.');
       setLoading(false);
@@ -201,7 +226,7 @@ export default function HomePage() {
                   <Lock className="mt-px h-3.5 w-3.5 shrink-0 text-[var(--bp-line)]" strokeWidth={1.5} />
                   <p className="bp-mono text-[11.5px] leading-relaxed text-[var(--bp-ink-dim)]">
                     Scanning a repository requires an account.{' '}
-                    <Link href="/signin" className="text-[var(--bp-line)] underline-offset-4 hover:underline">
+                    <Link href={signinHref(githubUrl)} className="text-[var(--bp-line)] underline-offset-4 hover:underline">
                       Sign in
                     </Link>{' '}
                     to continue, or use <span className="text-[var(--bp-ink)]">Try demo</span> for a sample report.

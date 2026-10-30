@@ -61,6 +61,20 @@ npm run test:unit     # Playwright unit tests
 npm run test:security # API/security test suite
 ```
 
+## Docker & CI/CD
+
+```bash
+docker compose up --build   # builds the image and serves on http://localhost:3000
+```
+
+Runtime secrets are read from `.env`; `NEXT_PUBLIC_*` values are build args.
+
+[`.github/workflows/ci-cd.yml`](./.github/workflows/ci-cd.yml) runs on every push and PR:
+
+1. **test** - lint, typecheck, unit tests
+2. **docker** - builds the image and smoke-tests the running container; on `main` pushes it to `ghcr.io/namanrai1222/reporadar`
+3. **deploy** - on `main`, SSHes into the server and runs `docker compose pull && up -d` (enabled by the `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` secrets)
+
 ## Roadmap
 
 - [ ] Public deployment with live demo link

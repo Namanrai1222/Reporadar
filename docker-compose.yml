@@ -1,0 +1,11 @@
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/namanrai1222/reporadar:latest}
+    build: .
+    ports:
+      - "3000:3000"
+    # Server-side secrets (GROQ_API_KEY, SUPABASE_SERVICE_ROLE_KEY, ...) are read at runtime.
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped

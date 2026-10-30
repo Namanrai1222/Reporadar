@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import type { Finding, Report, RepoFile, RepoIdentity, RiskPath, ScanMode, Severity } from "./types";
 import { escapeMarkdown, severityRank } from "./security";
-import { analyzeFiles } from "./scanners";
+import { analyzeFiles, SCANNER_COUNT } from "./scanners";
+import { buildStructure } from "./structure";
 
 const SAMPLE_FILES: RepoFile[] = [
   {
@@ -38,14 +40,20 @@ export default function Dashboard() {
   },
 ];
 
-export function buildReport(repo: RepoIdentity, files: RepoFile[], mode: ScanMode, filesFound = files.length): Report {
-  const analysis = analyzeFiles(files.length > 0 ? files : SAMPLE_FILES);
+export function buildReport(
+  repo: RepoIdentity,
+  files: RepoFile[],
+  mode: ScanMode,
+  filesFound = files.length,
+  treePaths: string[] = files.map((file) => file.path),
+): Report {
+  const analysis = analyzeFiles(files);
   const stack = detectStack(files);
   const sortedFindings = [...analysis.findings].sort((left, right) => {
     return severityRank(right.severity) - severityRank(left.severity);
   });
   const riskPaths = buildRiskPaths(sortedFindings);
-  const id = `${repo.owner}-${repo.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  const id = newReportId(repo);
 
   const report: Report = {
     id,
@@ -57,7 +65,7 @@ export function buildReport(repo: RepoIdentity, files: RepoFile[], mode: ScanMod
       filesFound,
       filesAnalyzed: files.length,
       filesIgnored: Math.max(filesFound - files.length, 0),
-      scannersCompleted: 10,
+      scannersCompleted: SCANNER_COUNT,
       maskedSecrets: sortedFindings.filter((finding) => finding.category === "secret_leak").length,
     },
     nodes: analysis.nodes,
@@ -65,6 +73,7 @@ export function buildReport(repo: RepoIdentity, files: RepoFile[], mode: ScanMod
     findings: sortedFindings,
     riskPaths,
     markdown: "",
+    structure: buildStructure(treePaths),
   };
 
   return {
@@ -72,6 +81,38 @@ export function buildReport(repo: RepoIdentity, files: RepoFile[], mode: ScanMod
     markdown: toMarkdown(report),
   };
 }
+
+export function refreshReportIdentity(report: Report): Report {
+  const createdAt = new Date().toISOString();
+  const refreshed = {
+    ...report,
+    id: newReportId(report.repo),
+    createdAt,
+  };
+
+  return {
+    ...refreshed,
+    markdown: report.markdown.replace(/^Generated: .+$/m, `Generated: ${createdAt}`),
+  };
+}
+
+/** File tree of the seeded demo repo (paths only) so its architecture map has something to draw. */
+const DEMO_TREE = [
+  ...SAMPLE_FILES.map((file) => file.path),
+  "README.md", "package.json", "tsconfig.json", "next.config.ts", "Dockerfile",
+  ".github/workflows/ci.yml",
+  "app/layout.tsx", "app/page.tsx", "app/globals.css",
+  "app/cart/page.tsx", "app/checkout/page.tsx", "app/products/[slug]/page.tsx",
+  "app/api/checkout/route.ts", "app/api/products/route.ts", "app/api/webhooks/stripe/route.ts",
+  "components/ui/button.tsx", "components/ui/card.tsx", "components/ui/dialog.tsx",
+  "components/cart/cart-drawer.tsx", "components/cart/line-item.tsx",
+  "components/product/product-grid.tsx", "components/product/price.tsx",
+  "src/lib/db.ts", "src/lib/stripe.ts", "src/lib/auth.ts", "src/lib/utils.ts",
+  "prisma/schema.prisma", "prisma/migrations/0001_init/migration.sql", "prisma/seed.ts",
+  "public/logo.svg", "public/images/hero.jpg", "public/images/placeholder.png",
+  "tests/checkout.spec.ts", "tests/cart.spec.ts", "tests/api/products.spec.ts",
+  "scripts/seed-products.ts",
+];
 
 /** Stable id for the seeded demo report, so `/report/demo` is fetchable without a database row. */
 export const DEMO_REPORT_ID = "demo";
@@ -90,7 +131,8 @@ export function demoReport(): Report {
     },
     SAMPLE_FILES,
     "security-lens",
-    124,
+    DEMO_TREE.length,
+    DEMO_TREE,
   );
 
   // Override the generated timestamp id: the demo is never persisted, so its URL
@@ -132,6 +174,11 @@ export function toMarkdown(report: Report) {
   ];
 
   return lines.join("\n");
+}
+
+function newReportId(repo: RepoIdentity) {
+  const slug = `${repo.owner}-${repo.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return `${slug}-${randomUUID()}`;
 }
 
 function detectStack(files: RepoFile[]) {
@@ -179,4 +226,3 @@ function riskPathForFinding(finding: Finding) {
 
   return ["repository source", finding.filePath, finding.ruleId];
 }
-

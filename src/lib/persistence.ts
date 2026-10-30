@@ -68,6 +68,7 @@ export interface PersistenceAdapter {
   saveFindings(scanId: string, userId: string, findings: Finding[]): Promise<void>;
   getReport(reportId: string, userId: string): Promise<Report | null>;
   listScans(userId: string): Promise<PersistedScan[]>;
+  getScan(scanId: string, userId: string): Promise<PersistedScan | null>;
   getUserPlan(userId: string): Promise<string>;
   listSavedReports(userId: string): Promise<SavedReportSummary[]>;
   saveReportBookmark(userId: string, reportId: string): Promise<void>;
@@ -181,9 +182,11 @@ class SupabasePersistenceAdapter implements PersistenceAdapter {
 
     await this.db.table("findings", {
       method: "POST",
-      prefer: "return=minimal",
+      // Upsert so a retried scan doesn't trip the primary key.
+      prefer: "resolution=merge-duplicates,return=minimal",
       body: findings.map((finding) => ({
-        id: finding.id,
+        // Finding ids are only unique within a scan; the table key is global.
+        id: `${scanId}:${finding.id}`,
         scan_id: scanId,
         user_id: userId,
         rule_id: finding.ruleId,
@@ -224,6 +227,20 @@ class SupabasePersistenceAdapter implements PersistenceAdapter {
       const { reports, ...scan } = row;
       return { ...scan, report_id: firstOf(reports)?.id ?? null } satisfies PersistedScan;
     });
+  }
+
+  async getScan(scanId: string, userId: string) {
+    requireUserId(userId);
+    const rows = await this.db.table<PersistedScan & { reports?: Array<{ id: string }> | { id: string } | null }>(
+      "scans",
+      {
+        query: `id=eq.${enc(scanId)}&user_id=eq.${enc(userId)}&select=*,reports(id)&limit=1`,
+      },
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const { reports, ...scan } = row;
+    return { ...scan, report_id: firstOf(reports)?.id ?? null };
   }
 
   async getUserPlan(userId: string) {
@@ -300,6 +317,10 @@ class LocalDisabledPersistenceAdapter implements PersistenceAdapter {
 
   async listScans() {
     return [];
+  }
+
+  async getScan() {
+    return null;
   }
 
   async getUserPlan() {

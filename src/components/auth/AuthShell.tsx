@@ -77,7 +77,7 @@ export function AuthShell({
 
         <div className="mt-8 grid grid-cols-3 border border-[var(--bp-line-faint)] bp-mono text-[10px]">
           {[
-            ['SCANNERS', '10+'],
+            ['CHECKS', '8'],
             ['TIME', '<30s'],
             ['STORED', '0'],
           ].map(([k, v], i) => (
@@ -123,7 +123,7 @@ export function GoogleIcon({ className = 'h-4 w-4' }: { className?: string }) {
  * not configured lands the user on a bare GoTrue JSON error with no route back
  * into the app, so an unavailable provider is disabled and labelled instead.
  */
-export function OAuthButtons({ onError }: { onError: (message: string) => void }) {
+export function OAuthButtons({ onError, next = '/dashboard' }: { onError: (message: string) => void; next?: string }) {
   const [available, setAvailable] = useState<Record<OAuthProvider, boolean> | null>(null);
 
   useEffect(() => {
@@ -142,7 +142,7 @@ export function OAuthButtons({ onError }: { onError: (message: string) => void }
       return;
     }
     try {
-      fn('/dashboard');
+      fn(next);
     } catch (err) {
       onError(err instanceof Error ? err.message : `Could not start ${label} sign-in.`);
     }
@@ -186,7 +186,7 @@ export function Field({
   label,
   hint,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; hint?: string }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; hint?: ReactNode }) {
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between">

@@ -2,6 +2,9 @@ import { defineConfig } from "@playwright/test";
 
 const PORT = Number(process.env.TEST_PORT ?? 3100);
 export const BASE_URL = `http://127.0.0.1:${PORT}`;
+const unitOnly = process.argv.some(
+  (arg, index) => arg === "--project=unit" || (arg === "--project" && process.argv[index + 1] === "unit"),
+);
 
 /**
  * Two projects, because the suite proves two different kinds of claim:
@@ -33,7 +36,7 @@ export default defineConfig({
   // The unit project needs no server, and booting one would mean a full production
   // build for tests that only exercise pure functions. `npm run test:unit` sets
   // PW_NO_SERVER so that suite stays fast.
-  webServer: process.env.PW_NO_SERVER
+  webServer: process.env.PW_NO_SERVER || unitOnly
     ? undefined
     : {
         // Production build: `NODE_ENV=production` is what disables dev error
