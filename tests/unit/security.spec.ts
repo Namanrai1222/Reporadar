@@ -201,6 +201,22 @@ test.describe("securityHeaders", () => {
       else process.env.NEXT_PUBLIC_SUPABASE_URL = previous;
     }
   });
+
+  test("production pages allow only nonce-stamped inline scripts", () => {
+    // Regression guard for the blank-page outage: a bare `script-src 'self'`
+    // blocked Next.js's inline bootstrap scripts, so nothing ever hydrated.
+    const env = process.env as Record<string, string | undefined>;
+    const previous = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    try {
+      const page = securityHeaders("abc123")["Content-Security-Policy"];
+      const script = page.split(";").find((part) => part.trim().startsWith("script-src"));
+      expect(script?.trim()).toBe("script-src 'self' 'nonce-abc123' 'strict-dynamic'");
+      expect(securityHeaders()["Content-Security-Policy"]).toContain("script-src 'self';");
+    } finally {
+      env.NODE_ENV = previous;
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ CSRF ---- */

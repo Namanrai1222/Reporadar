@@ -196,14 +196,17 @@ export function supabaseOrigin(): string | null {
   }
 }
 
-export function securityHeaders() {
+export function securityHeaders(nonce?: string) {
   const isDev = process.env.NODE_ENV !== "production";
-  // Next.js dev (Turbopack/HMR) evaluates code with eval() and injects inline
-  // bootstrap scripts, which a strict `script-src 'self'` blocks — preventing
-  // hydration. Relax only in development; production stays strict.
+  // Next.js injects inline bootstrap scripts (and dev uses eval() for HMR), which
+  // a bare `script-src 'self'` blocks — preventing hydration. Pages get a
+  // per-request nonce that Next.js stamps on its own scripts; JSON responses
+  // need no scripts at all.
   const scriptSrc = isDev
     ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
-    : "script-src 'self'";
+    : nonce
+      ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`
+      : "script-src 'self'";
 
   const connectSrc = ["'self'", "https://api.github.com", supabaseOrigin()]
     .filter(Boolean)

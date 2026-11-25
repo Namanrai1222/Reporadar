@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionBoot } from "@/components/auth/SessionBoot";
@@ -22,11 +23,14 @@ export const metadata: Metadata = {
     "Repository X-ray platform for deterministic GitHub analysis, security findings, architecture maps, and grounded LLM synthesis.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Render per request: the CSP nonce only exists at request time, and a
+  // prerendered page would ship nonce-less scripts that the CSP blocks.
+  await connection();
   return (
     <html
       lang="en"
